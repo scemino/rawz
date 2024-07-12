@@ -1,6 +1,11 @@
 const std = @import("std");
 const audio = @import("sokol").audio;
 const glue = @import("glue.zig");
+const DemoJoy = @import("DemoJoy.zig");
+const Strings = @import("Strings.zig");
+const GameFrac = @import("GameFrac.zig");
+pub const byteKillerUnpack = @import("unpack.zig").byteKillerUnpack;
+pub const GameLang = Strings.GameLang;
 const assert = std.debug.assert;
 
 pub const GAME_WIDTH = 320;
@@ -16,18 +21,15 @@ const GAME_MIX_CHANNELS = 4;
 const GAME_SFX_NUM_CHANNELS = 4;
 const GAME_MAX_AUDIO_SAMPLES = 2048 * 16; // max number of audio samples in internal sample buffer
 
-const _GFX_COL_ALPHA = 0x10; // transparent pixel (OR'ed with 0x8)
-const _GFX_COL_PAGE = 0x11; // buffer 0 pixel
-const _GFX_COL_BMP = 0xFF; // bitmap in buffer 0 pixel
-const _GFX_FMT_CLUT = 0;
-const _GFX_FMT_RGB555 = 1;
-const _GFX_FMT_RGB = 2;
-const _GFX_FMT_RGBA = 3;
+const GFX_COL_ALPHA = 0x10; // transparent pixel (OR'ed with 0x8)
+const GFX_COL_PAGE = 0x11; // buffer 0 pixel
+const GFX_COL_BMP = 0xFF; // bitmap in buffer 0 pixel
+const GFX_FMT_CLUT = 0;
+const GFX_FMT_RGB555 = 1;
+const GFX_FMT_RGB = 2;
+const GFX_FMT_RGBA = 3;
 
-const _GAME_INACTIVE_TASK = 0xFFFF;
-
-const _GAME_FRAC_BITS = 16;
-const _GAME_FRAC_MASK = (1 << _GAME_FRAC_BITS) - 1;
+const GAME_INACTIVE_TASK = 0xFFFF;
 
 const GAME_VAR_RANDOM_SEED = 0x3C;
 const GAME_VAR_SCREEN_NUM = 0x67;
@@ -49,306 +51,6 @@ const GAME_PAULA_FREQ: i32 = 7159092;
 const font = [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x10, 0x00, 0x28, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0x7E, 0x24, 0x24, 0x7E, 0x24, 0x00, 0x08, 0x3E, 0x48, 0x3C, 0x12, 0x7C, 0x10, 0x00, 0x42, 0xA4, 0x48, 0x10, 0x24, 0x4A, 0x84, 0x00, 0x60, 0x90, 0x90, 0x70, 0x8A, 0x84, 0x7A, 0x00, 0x08, 0x08, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x08, 0x10, 0x10, 0x10, 0x08, 0x06, 0x00, 0xC0, 0x20, 0x10, 0x10, 0x10, 0x20, 0xC0, 0x00, 0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00, 0x00, 0x10, 0x10, 0x7C, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x20, 0x00, 0x00, 0x00, 0x7C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x28, 0x10, 0x00, 0x00, 0x04, 0x08, 0x10, 0x20, 0x40, 0x00, 0x00, 0x78, 0x84, 0x8C, 0x94, 0xA4, 0xC4, 0x78, 0x00, 0x10, 0x30, 0x50, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x78, 0x84, 0x04, 0x08, 0x30, 0x40, 0xFC, 0x00, 0x78, 0x84, 0x04, 0x38, 0x04, 0x84, 0x78, 0x00, 0x08, 0x18, 0x28, 0x48, 0xFC, 0x08, 0x08, 0x00, 0xFC, 0x80, 0xF8, 0x04, 0x04, 0x84, 0x78, 0x00, 0x38, 0x40, 0x80, 0xF8, 0x84, 0x84, 0x78, 0x00, 0xFC, 0x04, 0x04, 0x08, 0x10, 0x20, 0x40, 0x00, 0x78, 0x84, 0x84, 0x78, 0x84, 0x84, 0x78, 0x00, 0x78, 0x84, 0x84, 0x7C, 0x04, 0x08, 0x70, 0x00, 0x00, 0x18, 0x18, 0x00, 0x00, 0x18, 0x18, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00, 0x10, 0x10, 0x60, 0x04, 0x08, 0x10, 0x20, 0x10, 0x08, 0x04, 0x00, 0x00, 0x00, 0xFE, 0x00, 0x00, 0xFE, 0x00, 0x00, 0x20, 0x10, 0x08, 0x04, 0x08, 0x10, 0x20, 0x00, 0x7C, 0x82, 0x02, 0x0C, 0x10, 0x00, 0x10, 0x00, 0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00, 0x78, 0x84, 0x84, 0xFC, 0x84, 0x84, 0x84, 0x00, 0xF8, 0x84, 0x84, 0xF8, 0x84, 0x84, 0xF8, 0x00, 0x78, 0x84, 0x80, 0x80, 0x80, 0x84, 0x78, 0x00, 0xF8, 0x84, 0x84, 0x84, 0x84, 0x84, 0xF8, 0x00, 0x7C, 0x40, 0x40, 0x78, 0x40, 0x40, 0x7C, 0x00, 0xFC, 0x80, 0x80, 0xF0, 0x80, 0x80, 0x80, 0x00, 0x7C, 0x80, 0x80, 0x8C, 0x84, 0x84, 0x7C, 0x00, 0x84, 0x84, 0x84, 0xFC, 0x84, 0x84, 0x84, 0x00, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x04, 0x04, 0x04, 0x04, 0x84, 0x84, 0x78, 0x00, 0x8C, 0x90, 0xA0, 0xE0, 0x90, 0x88, 0x84, 0x00, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0xFC, 0x00, 0x82, 0xC6, 0xAA, 0x92, 0x82, 0x82, 0x82, 0x00, 0x84, 0xC4, 0xA4, 0x94, 0x8C, 0x84, 0x84, 0x00, 0x78, 0x84, 0x84, 0x84, 0x84, 0x84, 0x78, 0x00, 0xF8, 0x84, 0x84, 0xF8, 0x80, 0x80, 0x80, 0x00, 0x78, 0x84, 0x84, 0x84, 0x84, 0x8C, 0x7C, 0x03, 0xF8, 0x84, 0x84, 0xF8, 0x90, 0x88, 0x84, 0x00, 0x78, 0x84, 0x80, 0x78, 0x04, 0x84, 0x78, 0x00, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x84, 0x84, 0x84, 0x84, 0x84, 0x84, 0x78, 0x00, 0x84, 0x84, 0x84, 0x84, 0x84, 0x48, 0x30, 0x00, 0x82, 0x82, 0x82, 0x82, 0x92, 0xAA, 0xC6, 0x00, 0x82, 0x44, 0x28, 0x10, 0x28, 0x44, 0x82, 0x00, 0x82, 0x44, 0x28, 0x10, 0x10, 0x10, 0x10, 0x00, 0xFC, 0x04, 0x08, 0x10, 0x20, 0x40, 0xFC, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFE, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x00, 0x00, 0x38, 0x04, 0x3C, 0x44, 0x3C, 0x00, 0x40, 0x40, 0x78, 0x44, 0x44, 0x44, 0x78, 0x00, 0x00, 0x00, 0x3C, 0x40, 0x40, 0x40, 0x3C, 0x00, 0x04, 0x04, 0x3C, 0x44, 0x44, 0x44, 0x3C, 0x00, 0x00, 0x00, 0x38, 0x44, 0x7C, 0x40, 0x3C, 0x00, 0x38, 0x44, 0x40, 0x60, 0x40, 0x40, 0x40, 0x00, 0x00, 0x00, 0x3C, 0x44, 0x44, 0x3C, 0x04, 0x78, 0x40, 0x40, 0x58, 0x64, 0x44, 0x44, 0x44, 0x00, 0x10, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x02, 0x00, 0x02, 0x02, 0x02, 0x02, 0x42, 0x3C, 0x40, 0x40, 0x46, 0x48, 0x70, 0x48, 0x46, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0xEC, 0x92, 0x92, 0x92, 0x92, 0x00, 0x00, 0x00, 0x78, 0x44, 0x44, 0x44, 0x44, 0x00, 0x00, 0x00, 0x38, 0x44, 0x44, 0x44, 0x38, 0x00, 0x00, 0x00, 0x78, 0x44, 0x44, 0x78, 0x40, 0x40, 0x00, 0x00, 0x3C, 0x44, 0x44, 0x3C, 0x04, 0x04, 0x00, 0x00, 0x4C, 0x70, 0x40, 0x40, 0x40, 0x00, 0x00, 0x00, 0x3C, 0x40, 0x38, 0x04, 0x78, 0x00, 0x10, 0x10, 0x3C, 0x10, 0x10, 0x10, 0x0C, 0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x44, 0x78, 0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x28, 0x10, 0x00, 0x00, 0x00, 0x82, 0x82, 0x92, 0xAA, 0xC6, 0x00, 0x00, 0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00, 0x00, 0x42, 0x22, 0x24, 0x18, 0x08, 0x30, 0x00, 0x00, 0x7C, 0x08, 0x10, 0x20, 0x7C, 0x00, 0x60, 0x90, 0x20, 0x40, 0xF0, 0x00, 0x00, 0x00, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0x00, 0x38, 0x44, 0xBA, 0xA2, 0xBA, 0x44, 0x38, 0x00, 0x38, 0x44, 0x82, 0x82, 0x44, 0x28, 0xEE, 0x00, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA };
 
 const restart_pos = [36 * 2]i16{ 16008, 0, 16001, 0, 16002, 10, 16002, 12, 16002, 14, 16003, 20, 16003, 24, 16003, 26, 16004, 30, 16004, 31, 16004, 32, 16004, 33, 16004, 34, 16004, 35, 16004, 36, 16004, 37, 16004, 38, 16004, 39, 16004, 40, 16004, 41, 16004, 42, 16004, 43, 16004, 44, 16004, 45, 16004, 46, 16004, 47, 16004, 48, 16004, 49, 16006, 64, 16006, 65, 16006, 66, 16006, 67, 16006, 68, 16005, 50, 16006, 60, 16007, 0 };
-
-const strings_table_fr = [_]GameStrEntry{
-    .{ .id = 0x001, .str = "P E A N U T  3000" },
-    .{ .id = 0x002, .str = "Copyright  } 1990 Peanut Computer, Inc.\nAll rights reserved.\n\nCDOS Version 5.01" },
-    .{ .id = 0x003, .str = "2" },
-    .{ .id = 0x004, .str = "3" },
-    .{ .id = 0x005, .str = "." },
-    .{ .id = 0x006, .str = "A" },
-    .{ .id = 0x007, .str = "@" },
-    .{ .id = 0x008, .str = "PEANUT 3000" },
-    .{ .id = 0x00A, .str = "R" },
-    .{ .id = 0x00B, .str = "U" },
-    .{ .id = 0x00C, .str = "N" },
-    .{ .id = 0x00D, .str = "P" },
-    .{ .id = 0x00E, .str = "R" },
-    .{ .id = 0x00F, .str = "O" },
-    .{ .id = 0x010, .str = "J" },
-    .{ .id = 0x011, .str = "E" },
-    .{ .id = 0x012, .str = "C" },
-    .{ .id = 0x013, .str = "T" },
-    .{ .id = 0x014, .str = "Shield 9A.5f Ok" },
-    .{ .id = 0x015, .str = "Flux % 5.0177 Ok" },
-    .{ .id = 0x016, .str = "CDI Vector ok" },
-    .{ .id = 0x017, .str = " %%%ddd ok" },
-    .{ .id = 0x018, .str = "Race-Track ok" },
-    .{ .id = 0x019, .str = "SYNCHROTRON" },
-    .{ .id = 0x01A, .str = "E: 23%\ng: .005\n\nRK: 77.2L\n\nopt: g+\n\n Shield:\n1: OFF\n2: ON\n3: ON\n\nP~: 1\n" },
-    .{ .id = 0x01B, .str = "ON" },
-    .{ .id = 0x01C, .str = "-" },
-    .{ .id = 0x021, .str = "|" },
-    .{ .id = 0x022, .str = "--- Etude theorique ---" },
-    .{ .id = 0x023, .str = " L'EXPERIENCE DEBUTERA DANS    SECONDES." },
-    .{ .id = 0x024, .str = "20" },
-    .{ .id = 0x025, .str = "19" },
-    .{ .id = 0x026, .str = "18" },
-    .{ .id = 0x027, .str = "4" },
-    .{ .id = 0x028, .str = "3" },
-    .{ .id = 0x029, .str = "2" },
-    .{ .id = 0x02A, .str = "1" },
-    .{ .id = 0x02B, .str = "0" },
-    .{ .id = 0x02C, .str = "L E T ' S   G O" },
-    .{ .id = 0x031, .str = "- Phase 0:\nINJECTION des particules\ndans le synchrotron" },
-    .{ .id = 0x032, .str = "- Phase 1:\nACCELERATION des particules." },
-    .{ .id = 0x033, .str = "- Phase 2:\nEJECTION des particules\nsur le bouclier." },
-    .{ .id = 0x034, .str = "A  N  A  L  Y  S  E" },
-    .{ .id = 0x035, .str = "- RESULTAT:\nProbabilites de creer de:\n ANTI-MATIERE: 91.V %\n NEUTRINO 27:  0.04 %\n NEUTRINO 424: 18 %\n" },
-    .{ .id = 0x036, .str = "Verification par la pratique O/N ?" },
-    .{ .id = 0x037, .str = "SUR ?" },
-    .{ .id = 0x038, .str = "MODIFICATION DES PARAMETRES\nRELATIFS A L'ACCELERATEUR\nDE PARTICULES (SYNCHROTRON)." },
-    .{ .id = 0x039, .str = "SIMULATION DE L'EXPERIENCE ?" },
-    .{ .id = 0x03C, .str = "t---t" },
-    .{ .id = 0x03D, .str = "000 ~" },
-    .{ .id = 0x03E, .str = ".20x14dd" },
-    .{ .id = 0x03F, .str = "gj5r5r" },
-    .{ .id = 0x040, .str = "tilgor 25%" },
-    .{ .id = 0x041, .str = "12% 33% checked" },
-    .{ .id = 0x042, .str = "D=4.2158005584" },
-    .{ .id = 0x043, .str = "d=10.00001" },
-    .{ .id = 0x044, .str = "+" },
-    .{ .id = 0x045, .str = "*" },
-    .{ .id = 0x046, .str = "% 304" },
-    .{ .id = 0x047, .str = "gurgle 21" },
-    .{ .id = 0x048, .str = "{{{{" },
-    .{ .id = 0x049, .str = "Delphine Software" },
-    .{ .id = 0x04A, .str = "By Eric Chahi" },
-    .{ .id = 0x04B, .str = "5" },
-    .{ .id = 0x04C, .str = "17" },
-    .{ .id = 0x12C, .str = "0" },
-    .{ .id = 0x12D, .str = "1" },
-    .{ .id = 0x12E, .str = "2" },
-    .{ .id = 0x12F, .str = "3" },
-    .{ .id = 0x130, .str = "4" },
-    .{ .id = 0x131, .str = "5" },
-    .{ .id = 0x132, .str = "6" },
-    .{ .id = 0x133, .str = "7" },
-    .{ .id = 0x134, .str = "8" },
-    .{ .id = 0x135, .str = "9" },
-    .{ .id = 0x136, .str = "A" },
-    .{ .id = 0x137, .str = "B" },
-    .{ .id = 0x138, .str = "C" },
-    .{ .id = 0x139, .str = "D" },
-    .{ .id = 0x13A, .str = "E" },
-    .{ .id = 0x13B, .str = "F" },
-    .{ .id = 0x13C, .str = "       CODE D'ACCES:" },
-    .{ .id = 0x13D, .str = "PRESSEZ LE BOUTON POUR CONTINUER" },
-    .{ .id = 0x13E, .str = "   ENTRER LE CODE D'ACCES" },
-    .{ .id = 0x13F, .str = "MOT DE PASSE INVALIDE !" },
-    .{ .id = 0x140, .str = "ANNULER" },
-    .{ .id = 0x141, .str = "     INSEREZ LA DISQUETTE ?\n\n\n\n\n\n\n\n\nPRESSEZ UNE TOUCHE POUR CONTINUER" },
-    .{ .id = 0x142, .str = "SELECTIONNER LES SYMBOLES CORRESPONDANTS\nA LA POSITION\nDE LA ROUE DE PROTECTION" },
-    .{ .id = 0x143, .str = "CHARGEMENT..." },
-    .{ .id = 0x144, .str = "             ERREUR" },
-    .{ .id = 0x15E, .str = "LDKD" },
-    .{ .id = 0x15F, .str = "HTDC" },
-    .{ .id = 0x160, .str = "CLLD" },
-    .{ .id = 0x161, .str = "FXLC" },
-    .{ .id = 0x162, .str = "KRFK" },
-    .{ .id = 0x163, .str = "XDDJ" },
-    .{ .id = 0x164, .str = "LBKG" },
-    .{ .id = 0x165, .str = "KLFB" },
-    .{ .id = 0x166, .str = "TTCT" },
-    .{ .id = 0x167, .str = "DDRX" },
-    .{ .id = 0x168, .str = "TBHK" },
-    .{ .id = 0x169, .str = "BRTD" },
-    .{ .id = 0x16A, .str = "CKJL" },
-    .{ .id = 0x16B, .str = "LFCK" },
-    .{ .id = 0x16C, .str = "BFLX" },
-    .{ .id = 0x16D, .str = "XJRT" },
-    .{ .id = 0x16E, .str = "HRTB" },
-    .{ .id = 0x16F, .str = "HBHK" },
-    .{ .id = 0x170, .str = "JCGB" },
-    .{ .id = 0x171, .str = "HHFL" },
-    .{ .id = 0x172, .str = "TFBB" },
-    .{ .id = 0x173, .str = "TXHF" },
-    .{ .id = 0x174, .str = "JHJL" },
-    .{ .id = 0x181, .str = "PAR" },
-    .{ .id = 0x182, .str = "ERIC CHAHI" },
-    .{ .id = 0x183, .str = "          MUSIQUES ET BRUITAGES" },
-    .{ .id = 0x184, .str = "DE" },
-    .{ .id = 0x185, .str = "JEAN-FRANCOIS FREITAS" },
-    .{ .id = 0x186, .str = "VERSION IBM PC" },
-    .{ .id = 0x187, .str = "      PAR" },
-    .{ .id = 0x188, .str = " DANIEL MORAIS" },
-    .{ .id = 0x18B, .str = "PUIS PRESSER LE BOUTON" },
-    .{ .id = 0x18C, .str = "POSITIONNER LE JOYSTICK EN HAUT A GAUCHE" },
-    .{ .id = 0x18D, .str = " POSITIONNER LE JOYSTICK AU CENTRE" },
-    .{ .id = 0x18E, .str = " POSITIONNER LE JOYSTICK EN BAS A DROITE" },
-    .{ .id = 0x258, .str = "       Conception ..... Eric Chahi" },
-    .{ .id = 0x259, .str = "    Programmation ..... Eric Chahi" },
-    .{ .id = 0x25A, .str = "     Graphismes ....... Eric Chahi" },
-    .{ .id = 0x25B, .str = "Musique de ...... Jean-francois Freitas" },
-    .{ .id = 0x25C, .str = "              Bruitages" },
-    .{ .id = 0x25D, .str = "        Jean-Francois Freitas\n             Eric Chahi" },
-    .{ .id = 0x263, .str = "               Merci a" },
-    .{ .id = 0x264, .str = "           Jesus Martinez\n\n          Daniel Morais\n\n        Frederic Savoir\n\n      Cecile Chahi\n\n    Philippe Delamarre\n\n  Philippe Ulrich\n\nSebastien Berthet\n\nPierre Gousseau" },
-    .{ .id = 0x265, .str = "Now Go Back To Another Earth" },
-    .{ .id = 0x190, .str = "Bonsoir professeur." },
-    .{ .id = 0x191, .str = "Je vois que Monsieur a pris\nsa Ferrari." },
-    .{ .id = 0x192, .str = "IDENTIFICATION" },
-    .{ .id = 0x193, .str = "Monsieur est en parfaite sante." },
-    .{ .id = 0x194, .str = "O" },
-    .{ .id = 0x193, .str = "AU BOULOT !!!\n" },
-    .{ .id = 0xFFFF, .str = "" },
-};
-
-const strings_table_eng = [_]GameStrEntry{
-    .{ .id = 0x001, .str = "P E A N U T  3000" },
-    .{ .id = 0x002, .str = "Copyright  } 1990 Peanut Computer, Inc.\nAll rights reserved.\n\nCDOS Version 5.01" },
-    .{ .id = 0x003, .str = "2" },
-    .{ .id = 0x004, .str = "3" },
-    .{ .id = 0x005, .str = "." },
-    .{ .id = 0x006, .str = "A" },
-    .{ .id = 0x007, .str = "@" },
-    .{ .id = 0x008, .str = "PEANUT 3000" },
-    .{ .id = 0x00A, .str = "R" },
-    .{ .id = 0x00B, .str = "U" },
-    .{ .id = 0x00C, .str = "N" },
-    .{ .id = 0x00D, .str = "P" },
-    .{ .id = 0x00E, .str = "R" },
-    .{ .id = 0x00F, .str = "O" },
-    .{ .id = 0x010, .str = "J" },
-    .{ .id = 0x011, .str = "E" },
-    .{ .id = 0x012, .str = "C" },
-    .{ .id = 0x013, .str = "T" },
-    .{ .id = 0x014, .str = "Shield 9A.5f Ok" },
-    .{ .id = 0x015, .str = "Flux % 5.0177 Ok" },
-    .{ .id = 0x016, .str = "CDI Vector ok" },
-    .{ .id = 0x017, .str = " %%%ddd ok" },
-    .{ .id = 0x018, .str = "Race-Track ok" },
-    .{ .id = 0x019, .str = "SYNCHROTRON" },
-    .{ .id = 0x01A, .str = "E: 23%\ng: .005\n\nRK: 77.2L\n\nopt: g+\n\n Shield:\n1: OFF\n2: ON\n3: ON\n\nP~: 1\n" },
-    .{ .id = 0x01B, .str = "ON" },
-    .{ .id = 0x01C, .str = "-" },
-    .{ .id = 0x021, .str = "|" },
-    .{ .id = 0x022, .str = "--- Theoretical study ---" },
-    .{ .id = 0x023, .str = " THE EXPERIMENT WILL BEGIN IN    SECONDS" },
-    .{ .id = 0x024, .str = "  20" },
-    .{ .id = 0x025, .str = "  19" },
-    .{ .id = 0x026, .str = "  18" },
-    .{ .id = 0x027, .str = "  4" },
-    .{ .id = 0x028, .str = "  3" },
-    .{ .id = 0x029, .str = "  2" },
-    .{ .id = 0x02A, .str = "  1" },
-    .{ .id = 0x02B, .str = "  0" },
-    .{ .id = 0x02C, .str = "L E T ' S   G O" },
-    .{ .id = 0x031, .str = "- Phase 0:\nINJECTION of particles\ninto synchrotron" },
-    .{ .id = 0x032, .str = "- Phase 1:\nParticle ACCELERATION." },
-    .{ .id = 0x033, .str = "- Phase 2:\nEJECTION of particles\non the shield." },
-    .{ .id = 0x034, .str = "A  N  A  L  Y  S  I  S" },
-    .{ .id = 0x035, .str = "- RESULT:\nProbability of creating:\n ANTIMATTER: 91.V %\n NEUTRINO 27:  0.04 %\n NEUTRINO 424: 18 %\n" },
-    .{ .id = 0x036, .str = "   Practical verification Y/N ?" },
-    .{ .id = 0x037, .str = "SURE ?" },
-    .{ .id = 0x038, .str = "MODIFICATION OF PARAMETERS\nRELATING TO PARTICLE\nACCELERATOR (SYNCHROTRON)." },
-    .{ .id = 0x039, .str = "       RUN EXPERIMENT ?" },
-    .{ .id = 0x03C, .str = "t---t" },
-    .{ .id = 0x03D, .str = "000 ~" },
-    .{ .id = 0x03E, .str = ".20x14dd" },
-    .{ .id = 0x03F, .str = "gj5r5r" },
-    .{ .id = 0x040, .str = "tilgor 25%" },
-    .{ .id = 0x041, .str = "12% 33% checked" },
-    .{ .id = 0x042, .str = "D=4.2158005584" },
-    .{ .id = 0x043, .str = "d=10.00001" },
-    .{ .id = 0x044, .str = "+" },
-    .{ .id = 0x045, .str = "*" },
-    .{ .id = 0x046, .str = "% 304" },
-    .{ .id = 0x047, .str = "gurgle 21" },
-    .{ .id = 0x048, .str = "{{{{" },
-    .{ .id = 0x049, .str = "Delphine Software" },
-    .{ .id = 0x04A, .str = "By Eric Chahi" },
-    .{ .id = 0x04B, .str = "  5" },
-    .{ .id = 0x04C, .str = "  17" },
-    .{ .id = 0x12C, .str = "0" },
-    .{ .id = 0x12D, .str = "1" },
-    .{ .id = 0x12E, .str = "2" },
-    .{ .id = 0x12F, .str = "3" },
-    .{ .id = 0x130, .str = "4" },
-    .{ .id = 0x131, .str = "5" },
-    .{ .id = 0x132, .str = "6" },
-    .{ .id = 0x133, .str = "7" },
-    .{ .id = 0x134, .str = "8" },
-    .{ .id = 0x135, .str = "9" },
-    .{ .id = 0x136, .str = "A" },
-    .{ .id = 0x137, .str = "B" },
-    .{ .id = 0x138, .str = "C" },
-    .{ .id = 0x139, .str = "D" },
-    .{ .id = 0x13A, .str = "E" },
-    .{ .id = 0x13B, .str = "F" },
-    .{ .id = 0x13C, .str = "        ACCESS CODE:" },
-    .{ .id = 0x13D, .str = "PRESS BUTTON OR RETURN TO CONTINUE" },
-    .{ .id = 0x13E, .str = "   ENTER ACCESS CODE" },
-    .{ .id = 0x13F, .str = "   INVALID PASSWORD !" },
-    .{ .id = 0x140, .str = "ANNULER" },
-    .{ .id = 0x141, .str = "      INSERT DISK ?\n\n\n\n\n\n\n\n\nPRESS ANY KEY TO CONTINUE" },
-    .{ .id = 0x142, .str = " SELECT SYMBOLS CORRESPONDING TO\n THE POSITION\n ON THE CODE WHEEL" },
-    .{ .id = 0x143, .str = "    LOADING..." },
-    .{ .id = 0x144, .str = "              ERROR" },
-    .{ .id = 0x15E, .str = "LDKD" },
-    .{ .id = 0x15F, .str = "HTDC" },
-    .{ .id = 0x160, .str = "CLLD" },
-    .{ .id = 0x161, .str = "FXLC" },
-    .{ .id = 0x162, .str = "KRFK" },
-    .{ .id = 0x163, .str = "XDDJ" },
-    .{ .id = 0x164, .str = "LBKG" },
-    .{ .id = 0x165, .str = "KLFB" },
-    .{ .id = 0x166, .str = "TTCT" },
-    .{ .id = 0x167, .str = "DDRX" },
-    .{ .id = 0x168, .str = "TBHK" },
-    .{ .id = 0x169, .str = "BRTD" },
-    .{ .id = 0x16A, .str = "CKJL" },
-    .{ .id = 0x16B, .str = "LFCK" },
-    .{ .id = 0x16C, .str = "BFLX" },
-    .{ .id = 0x16D, .str = "XJRT" },
-    .{ .id = 0x16E, .str = "HRTB" },
-    .{ .id = 0x16F, .str = "HBHK" },
-    .{ .id = 0x170, .str = "JCGB" },
-    .{ .id = 0x171, .str = "HHFL" },
-    .{ .id = 0x172, .str = "TFBB" },
-    .{ .id = 0x173, .str = "TXHF" },
-    .{ .id = 0x174, .str = "JHJL" },
-    .{ .id = 0x181, .str = " BY" },
-    .{ .id = 0x182, .str = "ERIC CHAHI" },
-    .{ .id = 0x183, .str = "         MUSIC AND SOUND EFFECTS" },
-    .{ .id = 0x184, .str = " " },
-    .{ .id = 0x185, .str = "JEAN-FRANCOIS FREITAS" },
-    .{ .id = 0x186, .str = "IBM PC VERSION" },
-    .{ .id = 0x187, .str = "      BY" },
-    .{ .id = 0x188, .str = " DANIEL MORAIS" },
-    .{ .id = 0x18B, .str = "       THEN PRESS FIRE" },
-    .{ .id = 0x18C, .str = " PUT THE PADDLE ON THE UPPER LEFT CORNER" },
-    .{ .id = 0x18D, .str = "PUT THE PADDLE IN CENTRAL POSITION" },
-    .{ .id = 0x18E, .str = "PUT THE PADDLE ON THE LOWER RIGHT CORNER" },
-    .{ .id = 0x258, .str = "      Designed by ..... Eric Chahi" },
-    .{ .id = 0x259, .str = "    Programmed by...... Eric Chahi" },
-    .{ .id = 0x25A, .str = "      Artwork ......... Eric Chahi" },
-    .{ .id = 0x25B, .str = "Music by ........ Jean-francois Freitas" },
-    .{ .id = 0x25C, .str = "            Sound effects" },
-    .{ .id = 0x25D, .str = "        Jean-Francois Freitas\n             Eric Chahi" },
-    .{ .id = 0x263, .str = "              Thanks To" },
-    .{ .id = 0x264, .str = "           Jesus Martinez\n\n          Daniel Morais\n\n        Frederic Savoir\n\n      Cecile Chahi\n\n    Philippe Delamarre\n\n  Philippe Ulrich\n\nSebastien Berthet\n\nPierre Gousseau" },
-    .{ .id = 0x265, .str = "Now Go Out Of This World" },
-    .{ .id = 0x190, .str = "Good evening professor." },
-    .{ .id = 0x191, .str = "I see you have driven here in your\nFerrari." },
-    .{ .id = 0x192, .str = "IDENTIFICATION" },
-    .{ .id = 0x193, .str = "Monsieur est en parfaite sante." },
-    .{ .id = 0x194, .str = "Y\n" },
-    .{ .id = 0x193, .str = "AU BOULOT !!!\n" },
-    .{ .id = 0xFFFF, .str = "" },
-};
-
-const strings_table_demo = [_]GameStrEntry{
-    .{ .id = 0x1F4, .str = "Over Two Years in the Making" },
-    .{ .id = 0x1F5, .str = "   A New, State\nof the Art, Polygon\n  Graphics System" },
-    .{ .id = 0x1F6, .str = "   Comes to the\nComputer With Full\n Screen Graphics" },
-    .{ .id = 0x1F7, .str = "While conducting a nuclear fission\nexperiment at your local\nparticle accelerator ..." },
-    .{ .id = 0x1F8, .str = "Nature decides to put a little\n    extra spin on the ball" },
-    .{ .id = 0x1F9, .str = "And sends you ..." },
-    .{ .id = 0x1FA, .str = "     Out of this World\nA Cinematic Action Adventure\n from Interplay Productions\n                    \n       By Eric CHAHI      \n\n  IBM version : D.MORAIS\n" },
-    .{ .id = 0xFFFF, .str = "" },
-};
-
 const mem_list_parts = [_][4]u8{
     .{ 0x14, 0x15, 0x16, 0x00 }, // 16000 - protection screens
     .{ 0x17, 0x18, 0x19, 0x00 }, // 16001 - introduction
@@ -404,8 +106,6 @@ pub const GamePart = enum(u16) {
 };
 
 const GameDataType = enum(u2) { dos, amiga, atari };
-
-pub const GameLang = enum(u1) { fr, us };
 
 const GameGfxFormat = enum(u2) {
     clut,
@@ -465,11 +165,6 @@ const GameAudioSfxModule = struct {
     num_order: u8 = 0,
     order_table: []u8,
     samples: [15]GameAudioSfxInstrument,
-};
-
-const GameFrac = struct {
-    inc: u32 = 0,
-    offset: u64 = 0,
 };
 
 const GameAudioSfxChannel = struct {
@@ -642,12 +337,6 @@ pub const Game = struct {
     };
 
     const Input = struct {
-        const DemoJoy = struct {
-            keymask: u8,
-            counter: u8,
-            buf_ptr: []const u8,
-            buf_pos: isize,
-        };
         dir_mask: GameInputDir,
         action: bool, // run,shoot
         code: bool,
@@ -662,7 +351,7 @@ pub const Game = struct {
     enable_protection: bool,
     // TODO: debug:game_debug_t,
     res: GameRes,
-    strings_table: []const GameStrEntry,
+    strings_table: Strings,
     part_num: GamePart,
     elapsed: u32,
     sleep: u32,
@@ -707,13 +396,12 @@ pub fn game_init(game: *Game, desc: GameDesc) !void {
     // game.debug = desc.debug;
     game.part_num = desc.part_num;
     game.res.lang = desc.lang;
-    // game.audio.callback = desc.audio.callback;
     gameAudioInit(game, desc.audio.callback);
     game.video.use_ega = desc.use_ega;
 
     game.res.data = desc.data;
     if (game.res.data.demo3_joy.len > 0 and game.res.data_type == .dos) {
-        demo3_joy_read(game, game.res.data.demo3_joy);
+        game.input.demo_joy.read(game.res.data.demo3_joy);
     }
 
     // g_debugMask = GAME_DBG_INFO | GAME_DBG_VIDEO | GAME_DBG_SND | GAME_DBG_SCRIPT | GAME_DBG_BANK;
@@ -739,7 +427,7 @@ pub fn game_init(game: *Game, desc: GameDesc) !void {
         game.vm.vars[0xE4] = 20;
     }
 
-    game.strings_table = if (game.res.lang == .fr) &strings_table_fr else &strings_table_eng;
+    game.strings_table = Strings.init(game.res.lang);
 
     if (game.enable_protection and (game.res.data_type != .dos or game.res.has_password_screen)) {
         game.part_num = .copy_protection;
@@ -813,8 +501,8 @@ fn game_vm_restart_at(game: *Game, part: GamePart, pos: i16) void {
     }
     game_res_setup_part(game, @intFromEnum(part));
     for (0..GAME_NUM_TASKS) |i| {
-        game.vm.tasks[i].pc = _GAME_INACTIVE_TASK;
-        game.vm.tasks[i].next_pc = _GAME_INACTIVE_TASK;
+        game.vm.tasks[i].pc = GAME_INACTIVE_TASK;
+        game.vm.tasks[i].next_pc = GAME_INACTIVE_TASK;
         game.vm.tasks[i].state = 0;
         game.vm.tasks[i].next_state = 0;
     }
@@ -826,7 +514,7 @@ fn game_vm_restart_at(game: *Game, part: GamePart, pos: i16) void {
     game.vm.start_time = game.elapsed;
     game.vm.time_stamp = game.elapsed;
     if (part == .water) {
-        if (demo3_joy_start(game)) {
+        if (game.input.demo_joy.start()) {
             @memset(game.vm.vars[0..256], 0);
         }
     }
@@ -840,9 +528,9 @@ fn game_vm_setup_tasks(game: *Game) void {
     for (0..GAME_NUM_TASKS) |i| {
         game.vm.tasks[i].state = game.vm.tasks[i].next_state;
         const n = game.vm.tasks[i].next_pc;
-        if (n != _GAME_INACTIVE_TASK) {
-            game.vm.tasks[i].pc = if (n == _GAME_INACTIVE_TASK - 1) _GAME_INACTIVE_TASK else n;
-            game.vm.tasks[i].next_pc = _GAME_INACTIVE_TASK;
+        if (n != GAME_INACTIVE_TASK) {
+            game.vm.tasks[i].pc = if (n == GAME_INACTIVE_TASK - 1) GAME_INACTIVE_TASK else n;
+            game.vm.tasks[i].next_pc = GAME_INACTIVE_TASK;
         }
     }
 }
@@ -913,7 +601,7 @@ fn game_vm_run(game: *Game) !bool {
     var i = game.vm.current_task;
     if (!game.input.quit and game.vm.tasks[i].state == 0) {
         const n = game.vm.tasks[i].pc;
-        if (n != _GAME_INACTIVE_TASK) {
+        if (n != GAME_INACTIVE_TASK) {
             // execute 1 step of 1 task
             game.vm.ptr = .{ .data = game.res.seg_code, .pc = n };
             game.vm.paused = false;
@@ -921,7 +609,7 @@ fn game_vm_run(game: *Game) !bool {
             try game_vm_execute_task(game);
             game.vm.tasks[i].pc = game.vm.ptr.pc;
             // std.log.debug("Script::runTasks() i=0x{X} pos=0x{X}", .{ i, game.vm.tasks[i].pc });
-            if (!game.vm.paused and game.vm.tasks[i].pc != _GAME_INACTIVE_TASK) {
+            if (!game.vm.paused and game.vm.tasks[i].pc != GAME_INACTIVE_TASK) {
                 return false;
             }
         }
@@ -938,7 +626,7 @@ fn game_vm_run(game: *Game) !bool {
             game_vm_update_input(game);
         }
 
-        if (game.vm.tasks[i].pc != _GAME_INACTIVE_TASK) {
+        if (game.vm.tasks[i].pc != GAME_INACTIVE_TASK) {
             game.vm.stack_ptr = 0;
             game.vm.current_task = i;
             break;
@@ -992,7 +680,7 @@ fn game_vm_update_input(game: *Game) void {
     game.vm.vars[GAME_VAR_HERO_ACTION] = action;
     game.vm.vars[GAME_VAR_HERO_ACTION_POS_MASK] = m;
     if (game.res.current_part == .water) {
-        const mask = demo3_joy_update(game);
+        const mask = game.input.demo_joy.update();
         if (mask != 0) {
             game.vm.vars[GAME_VAR_HERO_ACTION_POS_MASK] = mask;
             game.vm.vars[GAME_VAR_HERO_POS_MASK] = mask & 15;
@@ -1030,7 +718,7 @@ fn game_res_read_bank(game: *Game, me: *const GameMemEntry, dst_buf: []u8) bool 
 
     if (game.res.data.banks.get(me.bank_num - 1)) |bank| {
         if (me.packed_size != me.unpacked_size) {
-            return byte_killer_unpack(dst_buf[0..me.unpacked_size], bank[me.bank_pos..][0..me.packed_size]);
+            return byteKillerUnpack(dst_buf[0..me.unpacked_size], bank[me.bank_pos..][0..me.packed_size]);
         }
 
         return true;
@@ -1423,14 +1111,8 @@ fn game_video_draw_string(game: *Game, color: u8, xx: u16, yy: u16, strId: u16) 
     var x = xx;
     var y = yy;
     const escapedChars = false;
-    var str = find_string(game.strings_table, strId);
-    if (str.len == 0 and game.res.data_type == .dos) {
-        str = find_string(&strings_table_demo, strId);
-    }
-    if (str.len == 0) {
-        std.log.warn("Unknown string id {}", .{strId});
-        return;
-    }
+    const str = game.strings_table.find(strId);
+
     std.log.debug("drawString({}, {}, {}, '{s}')", .{ color, x, y, str });
     const len = str.len;
     for (0..len) |i| {
@@ -1453,63 +1135,6 @@ fn game_video_draw_string(game: *Game, color: u8, xx: u16, yy: u16, strId: u16) 
             x += 1;
         }
     }
-}
-
-fn demo3_joy_start(game: *Game) bool {
-    if (game.input.demo_joy.buf_ptr.len > 0) {
-        game.input.demo_joy.keymask = game.input.demo_joy.buf_ptr[0];
-        game.input.demo_joy.counter = game.input.demo_joy.buf_ptr[1];
-        game.input.demo_joy.buf_pos = 2;
-        return true;
-    }
-    return false;
-}
-
-fn demo3_joy_read(game: *Game, buf_ptr: []const u8) void {
-    game.input.demo_joy.buf_ptr = buf_ptr;
-    game.input.demo_joy.buf_pos = -1;
-}
-
-fn demo3_joy_update(game: *Game) u8 {
-    if (game.input.demo_joy.buf_pos >= 0 and game.input.demo_joy.buf_pos < game.input.demo_joy.buf_ptr.len) {
-        if (game.input.demo_joy.counter == 0) {
-            game.input.demo_joy.keymask = game.input.demo_joy.buf_ptr[@intCast(game.input.demo_joy.buf_pos)];
-            game.input.demo_joy.buf_pos += 1;
-            game.input.demo_joy.counter = game.input.demo_joy.buf_ptr[@intCast(game.input.demo_joy.buf_pos)];
-            game.input.demo_joy.buf_pos += 1;
-        } else {
-            game.input.demo_joy.counter -= 1;
-        }
-        return game.input.demo_joy.keymask;
-    }
-    return 0;
-}
-
-fn find_string(strings_table: []const GameStrEntry, id: u16) []const u8 {
-    for (strings_table) |se| {
-        if (se.id == 0xFFFF) break;
-        if (se.id == id) return se.str;
-    }
-    return "";
-}
-
-fn frac_reset(frac: *GameFrac, n: i32, d: i32) void {
-    // TODO: check this
-    frac.inc = @truncate(@as(u64, @bitCast(@divTrunc((@as(i64, n) << _GAME_FRAC_BITS), d))));
-    frac.offset = 0;
-}
-
-fn frac_get_int(frac: GameFrac) u32 {
-    return @truncate(frac.offset >> _GAME_FRAC_BITS);
-}
-
-fn frac_get_frac(frac: GameFrac) u32 {
-    return @truncate(frac.offset & _GAME_FRAC_MASK);
-}
-
-fn frac_interpolate(frac: GameFrac, sample1: i32, sample2: i32) i32 {
-    const fp = frac_get_frac(frac);
-    return @truncate((@as(i64, @intCast(sample1)) * (_GAME_FRAC_MASK - fp) + @as(i64, @intCast(sample2)) * fp) >> _GAME_FRAC_BITS);
 }
 
 fn game_gfx_set_palette(game: *Game, colors: [16]u32) void {
@@ -1572,8 +1197,8 @@ fn game_gfx_draw_string_char(game: *Game, page: u2, color: u8, c: u8, pt: GamePo
 fn game_gfx_draw_point(game: *Game, x: i16, y: i16, color: u8) void {
     const offset = @as(i32, @intCast(y)) * GAME_WIDTH + (@as(i32, @intCast(x)));
     game.gfx.fbs[game.gfx.draw_page].buffer[@intCast(offset)] = switch (color) {
-        _GFX_COL_ALPHA => game.gfx.fbs[game.gfx.draw_page].buffer[@intCast(offset)] | 8,
-        _GFX_COL_PAGE => game.gfx.fbs[0].buffer[@intCast(offset)],
+        GFX_COL_ALPHA => game.gfx.fbs[game.gfx.draw_page].buffer[@intCast(offset)] | 8,
+        GFX_COL_PAGE => game.gfx.fbs[0].buffer[@intCast(offset)],
         else => color,
     };
 }
@@ -1641,8 +1266,8 @@ fn game_gfx_draw_polygon(game: *Game, color: u8, quad_strip: *const GameQuadStri
     j -= 1;
 
     const draw_func = switch (color) {
-        _GFX_COL_PAGE => &draw_line_p,
-        _GFX_COL_ALPHA => &draw_line_trans,
+        GFX_COL_PAGE => &draw_line_p,
+        GFX_COL_ALPHA => &draw_line_trans,
         else => &draw_line_n,
     };
 
@@ -1792,7 +1417,7 @@ fn gameAudioSfxPlay(game: *Game, rate: i32) void {
 
 fn gameAudioInitRaw(chan: *GameAudioChannel, data: []const u8, freq: i32, volume: i32, mixingFreq: i32) void {
     chan.data = data[8..];
-    frac_reset(&chan.pos, freq, mixingFreq);
+    chan.pos.reset(freq, mixingFreq);
 
     const len = std.mem.readInt(u16, data[0..2], .big) * 2;
     chan.loop_len = std.mem.readInt(u16, data[2..4], .big) * 2;
@@ -1868,12 +1493,12 @@ fn gameAudioStopAll(game: *Game) void {
 
 fn gameAudioMixRaw(chan: *GameAudioChannel, sample: *i16) void {
     if (chan.data) |data| {
-        var pos = frac_get_int(chan.pos);
+        var pos = chan.pos.getInt();
         chan.pos.offset += chan.pos.inc;
         if (chan.loop_len != 0) {
             if (pos >= chan.loop_pos + chan.loop_len) {
                 pos = chan.loop_pos;
-                chan.pos.offset = (chan.loop_pos << _GAME_FRAC_BITS) + chan.pos.inc;
+                chan.pos.offset = (chan.loop_pos << GameFrac.bits) + chan.pos.inc;
             }
         } else {
             if (pos >= chan.len) {
@@ -1968,7 +1593,7 @@ fn gameAudioSfxHandlePattern(game: *Game, channel: u8, data: []const u8) void {
         ch.sample_loop_len = pat.loop_len;
         ch.volume = pat.sample_volume;
         ch.pos.offset = 0;
-        ch.pos.inc = @bitCast(@divTrunc((freq << _GAME_FRAC_BITS), player.rate));
+        ch.pos.inc = @bitCast(@divTrunc((freq << GameFrac.bits), player.rate));
     }
 }
 
@@ -1996,13 +1621,13 @@ fn gameAudioSfxMixChannel(s: *i16, ch: *GameAudioSfxChannel) void {
     if (ch.sample_len == 0) {
         return;
     }
-    const pos1: i32 = @bitCast(@as(u32, @truncate(ch.pos.offset >> _GAME_FRAC_BITS)));
+    const pos1: i32 = @bitCast(@as(u32, @truncate(ch.pos.offset >> GameFrac.bits)));
     ch.pos.offset += ch.pos.inc;
     var pos2: i32 = pos1 + 1;
     if (ch.sample_loop_len != 0) {
         if (pos1 >= ch.sample_loop_pos + ch.sample_loop_len - 1) {
             pos2 = ch.sample_loop_pos;
-            ch.pos.offset = @as(u64, @intCast(pos2)) << _GAME_FRAC_BITS;
+            ch.pos.offset = @as(u64, @intCast(pos2)) << GameFrac.bits;
         }
     } else {
         if (pos1 >= ch.sample_len - 1) {
@@ -2010,7 +1635,7 @@ fn gameAudioSfxMixChannel(s: *i16, ch: *GameAudioSfxChannel) void {
             return;
         }
     }
-    var sample: i32 = frac_interpolate(ch.pos, @as(i8, @bitCast(ch.sample_data[@intCast(pos1)])), @as(i8, @bitCast(ch.sample_data[@intCast(pos2)])));
+    var sample: i32 = ch.pos.interpolate(@as(i8, @bitCast(ch.sample_data[@intCast(pos1)])), @as(i8, @bitCast(ch.sample_data[@intCast(pos2)])));
     sample = s.* +% to_i16(@divTrunc(sample * ch.volume, 64));
     s.* = (if (sample < -32768) -32768 else (if (sample > 32767) 32767 else @truncate(sample)));
 }
@@ -2080,109 +1705,6 @@ fn sndPlaySound(game: *Game, resNum: u16, frequency: u8, volume: u8, channel: u8
     if (me.status == .loaded) {
         gameAudioPlaySoundRaw(game, chan, me.buf_ptr, getSoundFreq(freq), vol);
     }
-}
-
-const UnpackContext = struct {
-    size: isize,
-    crc: u32,
-    bits: u32,
-    dst_buf: []u8,
-    dst_i: isize,
-    src_buf: []const u8,
-    src_i: isize,
-};
-
-fn next_bit(uc: *UnpackContext) bool {
-    var carry = (uc.bits & 1) != 0;
-    uc.bits >>= 1;
-    if (uc.bits == 0) { // getnextlwd
-        uc.bits = std.mem.readInt(u32, uc.src_buf[@intCast(uc.src_i)..][0..4], .big);
-        uc.src_i -= 4;
-        uc.crc ^= uc.bits;
-        carry = (uc.bits & 1) != 0;
-        uc.bits = (1 << 31) | (uc.bits >> 1);
-    }
-    return carry;
-}
-
-fn get_bits(uc: *UnpackContext, count: isize) i32 { // rdd1bits
-    var bits: i32 = 0;
-    for (0..@intCast(count)) |_| {
-        bits <<= 1;
-        if (next_bit(uc)) {
-            bits |= 1;
-        }
-    }
-    return bits;
-}
-
-fn copy_literal(uc: *UnpackContext, bits_count: isize, len: i32) void { // getd3chr
-    var count: isize = @intCast(get_bits(uc, bits_count) + len + 1);
-    uc.size -= count;
-    if (uc.size < 0) {
-        count += uc.size;
-        uc.size = 0;
-    }
-    for (0..@intCast(count)) |i| {
-        uc.dst_buf[@as(usize, @intCast(uc.dst_i)) - i] = @intCast(get_bits(uc, 8));
-    }
-    uc.dst_i -= count;
-}
-
-fn copy_reference(uc: *UnpackContext, bits_count: isize, count: isize) void { // copyd3bytes
-    var c = count;
-    uc.size -= c;
-    if (uc.size < 0) {
-        c += uc.size;
-        uc.size = 0;
-    }
-    const offset: usize = @intCast(get_bits(uc, bits_count));
-    for (0..@intCast(c)) |i| {
-        uc.dst_buf[@as(usize, @intCast(uc.dst_i)) - i] = uc.dst_buf[@as(usize, @intCast(uc.dst_i)) - i + offset];
-    }
-    uc.dst_i -= c;
-}
-
-fn byte_killer_unpack(dst: []u8, src: []const u8) bool {
-    var uc = UnpackContext{
-        .src_buf = src,
-        .src_i = @intCast(src.len - 8),
-        .size = std.mem.readInt(u32, src[src.len - 4 ..][0..4], .big),
-        .dst_buf = dst,
-        .dst_i = 0,
-        .crc = 0,
-        .bits = 0,
-    };
-    if (uc.size > dst.len) {
-        std.log.warn("Unexpected unpack size {}, buffer size {}", .{ uc.size, dst.len });
-        return false;
-    }
-    uc.dst_i = uc.size - 1;
-    uc.crc = std.mem.readInt(u32, src[@intCast(uc.src_i)..][0..4], .big);
-    uc.src_i -= 4;
-    uc.bits = std.mem.readInt(u32, src[@intCast(uc.src_i)..][0..4], .big);
-    uc.src_i -= 4;
-    uc.crc ^= uc.bits;
-    while (uc.size > 0) {
-        if (!next_bit(&uc)) {
-            if (!next_bit(&uc)) {
-                copy_literal(&uc, 3, 0);
-            } else {
-                copy_reference(&uc, 8, 2);
-            }
-        } else {
-            const code = get_bits(&uc, 2);
-            switch (code) {
-                3 => copy_literal(&uc, 8, 8),
-                2 => copy_reference(&uc, 12, @intCast(get_bits(&uc, 8) + 1)),
-                1 => copy_reference(&uc, 10, 4),
-                0 => copy_reference(&uc, 9, 3),
-                else => unreachable,
-            }
-        }
-    }
-    assert(uc.size == 0);
-    return uc.crc == 0;
 }
 
 fn fetch_byte(pc: *GamePc) u8 {
@@ -2393,7 +1915,7 @@ fn op_change_tasks_state(game: *Game) void {
 
     if (state == 2) {
         for (start..end + 1) |i| {
-            game.vm.tasks[i].next_pc = _GAME_INACTIVE_TASK - 1;
+            game.vm.tasks[i].next_pc = GAME_INACTIVE_TASK - 1;
         }
     } else if (state < 2) {
         for (start..end + 1) |i| {
