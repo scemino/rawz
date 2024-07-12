@@ -1042,12 +1042,46 @@ fn gameVideoCopyBitmapPtr(game: *Game, src: []const u8) void {
     }
 }
 
-fn gameVideoReadPaletteEga(buf: []const u8, num: u8, pal: [16]u32) void {
-    // TODO:
-    _ = buf;
-    _ = num;
-    _ = pal;
-    unreachable;
+const palette_ega = [_]u8{
+    0x00, 0x00, 0x00, // black #0
+    0x00, 0x00, 0xAA, // blue #1
+    0x00, 0xAA, 0x00, // green #2
+    0x00, 0xAA, 0xAA, // cyan #3
+    0xAA, 0x00, 0x00, // red #4
+    0xAA, 0x00, 0xAA, // magenta #5
+    0xAA, 0x55, 0x00, // yellow, brown #20
+    0xAA, 0xAA, 0xAA, // white, light gray #7
+    0x55, 0x55, 0x55, // dark gray, bright black #56
+    0x55, 0x55, 0xFF, // bright blue #57
+    0x55, 0xFF, 0x55, // bright green #58
+    0x55, 0xFF, 0xFF, // bright cyan #59
+    0xFF, 0x55, 0x55, // bright red #60
+    0xFF, 0x55, 0xFF, // bright magenta #61
+    0xFF, 0xFF, 0x55, // bright yellow #62
+    0xFF, 0xFF, 0xFF, // bright white #63
+};
+
+fn gameVideoReadPaletteEga(buf: []const u8, num: u8, pal: *[16]u32) void {
+    var p = buf[@as(usize, @intCast(num)) * 16 * @sizeOf(u16) ..];
+    p = p[1024..]; // EGA colors are stored after VGA (Amiga)
+    inline for (0..16) |i| {
+        const color: usize = readBeU16(p);
+        p = p[2..];
+        // if (1)
+        {
+            const ega = palette_ega[3 * ((color >> 12) & 15) ..][0..3];
+            pal[i] = 0xFF000000 | @as(u32, @intCast(ega[0])) | (@as(u32, @intCast(ega[1])) << 8) | (@as(u32, @intCast(ega[2])) << 16);
+        }
+        //  else { // lower 12 bits hold other colors
+        // 	uint32_t r = (color >> 8) & 0xF;
+        // 	uint32_t g = (color >> 4) & 0xF;
+        // 	uint32_t b =  color       & 0xF;
+        // 	r = (r << 4) | r;
+        // 	g = (g << 4) | g;
+        // 	b = (b << 4) | b;
+        //     pal[i] = 0xFF000000 | (((uint32_t)r)) | (((uint32_t)g) << 8) | (((uint32_t)b) << 16);
+        // }
+    }
 }
 
 fn gameVideoReadPaletteAmiga(buf: []const u8, num: u8, pal: *[16]u32) void {
@@ -1068,7 +1102,7 @@ fn gameVideoChangePal(game: *Game, pal_num: u8) void {
     if (pal_num < 32 and pal_num != game.video.current_pal) {
         var pal: [16]u32 = [1]u32{0} ** 16;
         if (game.res.data_type == .dos and game.video.use_ega) {
-            gameVideoReadPaletteEga(game.res.seg_video_pal, pal_num, pal);
+            gameVideoReadPaletteEga(game.res.seg_video_pal, pal_num, &pal);
         } else {
             gameVideoReadPaletteAmiga(game.res.seg_video_pal, pal_num, &pal);
         }
