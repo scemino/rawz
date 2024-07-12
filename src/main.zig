@@ -5,6 +5,7 @@ const raw = @import("raw.zig");
 const time = @import("time.zig");
 const gfx = @import("gfx.zig");
 const prof = @import("prof.zig");
+const audio = @import("audio.zig");
 const slog = sokol.log;
 const sg = sokol.gfx;
 const sapp = sokol.app;
@@ -27,9 +28,14 @@ const state = struct {
 };
 
 export fn init() void {
+    audio.init(.{});
     prof.init();
     time.init();
     raw.game_init(&state.game, .{
+        .audio = .{
+            .sample_rate = audio.sampleRate(),
+            .callback = audio.push,
+        },
         .part_num = state.options.part_num,
         .use_ega = state.options.use_ega,
         .enable_protection = state.options.enable_protection,
