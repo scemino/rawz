@@ -42,14 +42,14 @@ export fn init() void {
         .lang = state.options.lang,
         .data = .{
             .banks = .{
-                .bank0D = @embedFile("data/BANK0D"),
-                .bank01 = @embedFile("data/BANK01"),
-                .bank02 = @embedFile("data/BANK02"),
-                .bank05 = @embedFile("data/BANK05"),
-                .bank06 = @embedFile("data/BANK06"),
+                .bank0D = @embedFile("data/pc_demo/BANK0D"),
+                .bank01 = @embedFile("data/pc_demo/BANK01"),
+                .bank02 = @embedFile("data/pc_demo/BANK02"),
+                .bank05 = @embedFile("data/pc_demo/BANK05"),
+                .bank06 = @embedFile("data/pc_demo/BANK06"),
             },
-            .mem_list = @embedFile("data/MEMLIST.BIN"),
-            .demo3_joy = @embedFile("data/DEMO3.JOY"),
+            .mem_list = @embedFile("data/pc_demo/MEMLIST.BIN"),
+            .demo3_joy = @embedFile("data/pc_demo/DEMO3.JOY"),
         },
     }) catch |e| {
         std.log.err("Game init failed: {}", .{e});
@@ -60,7 +60,7 @@ export fn init() void {
     gfx.init(.{
         .border = gfx.DEFAULT_BORDER,
         .display = raw.displayInfo(&state.game),
-        // .pixel_aspect = .{ .width = 2, .height = 3 },
+        .pixel_aspect = .{ .width = 2, .height = 2 },
     });
     // initialize sokol-imgui
     simgui.setup(.{

@@ -4,13 +4,18 @@ const glue = @import("glue.zig");
 const DemoJoy = @import("DemoJoy.zig");
 const Strings = @import("Strings.zig");
 const GameFrac = @import("GameFrac.zig");
+pub const mementries = @import("mementries.zig");
 pub const byteKillerUnpack = @import("unpack.zig").byteKillerUnpack;
+pub const detectAmigaAtari = mementries.detectAmigaAtari;
+pub const GameDataType = mementries.GameDataType;
 pub const GameLang = Strings.GameLang;
+const DefaultPrng = std.rand.DefaultPrng;
 const assert = std.debug.assert;
 
 pub const GAME_WIDTH = 320;
 pub const GAME_HEIGHT = 200;
 
+const GAME_ENTRIES_COUNT = 146;
 const GAME_ENTRIES_COUNT_20TH = 178;
 const GAME_MEM_BLOCK_SIZE = 1 * 1024 * 1024;
 const GAME_NUM_TASKS = 64;
@@ -104,8 +109,6 @@ pub const GamePart = enum(u16) {
     final = 16007,
     password = 16008,
 };
-
-const GameDataType = enum(u2) { dos, amiga, atari };
 
 const GameGfxFormat = enum(u2) {
     clut,
@@ -215,20 +218,34 @@ const GameInputDir = packed struct {
 };
 
 const GameBanks = struct {
-    bank0D: []const u8,
     bank01: []const u8,
-    bank02: []const u8,
-    bank05: []const u8,
-    bank06: []const u8,
+    bank02: ?[]const u8 = null,
+    bank03: ?[]const u8 = null,
+    bank04: ?[]const u8 = null,
+    bank05: ?[]const u8 = null,
+    bank06: ?[]const u8 = null,
+    bank07: ?[]const u8 = null,
     bank08: ?[]const u8 = null,
+    bank09: ?[]const u8 = null,
+    bank0A: ?[]const u8 = null,
+    bank0B: ?[]const u8 = null,
+    bank0C: ?[]const u8 = null,
+    bank0D: ?[]const u8 = null,
 
     fn get(self: GameBanks, i: usize) ?[]const u8 {
         switch (i + 1) {
             0x1 => return self.bank01,
             0x2 => return self.bank02,
+            0x3 => return self.bank03,
+            0x4 => return self.bank04,
             0x5 => return self.bank05,
             0x6 => return self.bank06,
+            0x7 => return self.bank07,
             0x8 => return self.bank08,
+            0x9 => return self.bank09,
+            0xA => return self.bank0A,
+            0xB => return self.bank0B,
+            0xC => return self.bank0C,
             0xD => return self.bank0D,
             else => return null,
         }
@@ -237,9 +254,9 @@ const GameBanks = struct {
 };
 
 const GameData = struct {
-    mem_list: []const u8,
+    mem_list: ?[]const u8 = null,
     banks: GameBanks,
-    demo3_joy: []const u8, // contains content of demo3.joy file if present
+    demo3_joy: ?[]const u8 = null, // contains content of demo3.joy file if present
 };
 
 const GameRes = struct {
@@ -400,8 +417,8 @@ pub fn game_init(game: *Game, desc: GameDesc) !void {
     game.video.use_ega = desc.use_ega;
 
     game.res.data = desc.data;
-    if (game.res.data.demo3_joy.len > 0 and game.res.data_type == .dos) {
-        game.input.demo_joy.read(game.res.data.demo3_joy);
+    if (game.res.data.demo3_joy) |demo| {
+        game.input.demo_joy.read(demo);
     }
 
     // g_debugMask = GAME_DBG_INFO | GAME_DBG_VIDEO | GAME_DBG_SND | GAME_DBG_SCRIPT | GAME_DBG_BANK;
@@ -415,7 +432,8 @@ pub fn game_init(game: *Game, desc: GameDesc) !void {
 
     game_gfx_set_work_page_ptr(game, 2);
 
-    // TODO: game.vm.vars[GAME_VAR_RANDOM_SEED] = time(0);
+    var rnd = DefaultPrng.init(0);
+    game.vm.vars[GAME_VAR_RANDOM_SEED] = rnd.random().int(i16);
     if (!game.enable_protection) {
         game.vm.vars[0xBC] = 0x10;
         game.vm.vars[0xC6] = 0x80;
@@ -719,6 +737,8 @@ fn game_res_read_bank(game: *Game, me: *const GameMemEntry, dst_buf: []u8) bool 
     if (game.res.data.banks.get(me.bank_num - 1)) |bank| {
         if (me.packed_size != me.unpacked_size) {
             return byteKillerUnpack(dst_buf[0..me.unpacked_size], bank[me.bank_pos..][0..me.packed_size]);
+        } else {
+            @memcpy(dst_buf[0..me.unpacked_size], bank[me.bank_pos..][0..me.packed_size]);
         }
 
         return true;
@@ -818,32 +838,28 @@ fn game_res_setup_part(game: *Game, ptrId: usize) void {
 }
 
 fn game_res_detect_version(game: *Game) void {
-    if (game.res.data.mem_list.len > 0) {
+    if (game.res.data.mem_list) |_| {
         game.res.data_type = .dos;
         std.log.debug("Using DOS data files", .{});
-    } else unreachable;
-    // TODO:
-    // } else {
-    //     const amiga_mem_entry_t* entries = detect_amiga_atari(game);
-    //     if(entries) {
-    //         if (entries == _mem_list_atari_en) {
-    //             game.res.data_type = DT_ATARI;
-    //             _debug(GAME_DBG_INFO, "Using Atari data files");
-    //         } else {
-    //             game.res.data_type = DT_AMIGA;
-    //             _debug(GAME_DBG_INFO, "Using Amiga data files");
-    //         }
-    //         game.res.num_mem_list = _GAME_ENTRIES_COUNT;
-    //         for (int i = 0; i < _GAME_ENTRIES_COUNT; ++i) {
-    //             game.res.mem_list[i].type = entries[i].type;
-    //             game.res.mem_list[i].bank_num = entries[i].bank;
-    //             game.res.mem_list[i].bank_pos = entries[i].offset;
-    //             game.res.mem_list[i].packed_size = entries[i].packed_size;
-    //             game.res.mem_list[i].unpacked_size = entries[i].unpacked_size;
-    //         }
-    //         game.res.mem_list[_GAME_ENTRIES_COUNT].status = 0xFF;
-    //     }
-    // }
+    } else {
+        const detection = detectAmigaAtari(game.res.data.banks.bank01.len);
+        if (detection) |detected| {
+            game.res.data_type = detected.data_type;
+            if (detected.data_type == .atari) {
+                std.log.debug("Using Atari data files", .{});
+            } else {
+                std.log.debug("Using Amiga data files", .{});
+            }
+            game.res.num_mem_list = GAME_ENTRIES_COUNT;
+            for (0..GAME_ENTRIES_COUNT) |i| {
+                game.res.mem_list[i].type = @enumFromInt(detected.entries[i].type);
+                game.res.mem_list[i].bank_num = detected.entries[i].bank;
+                game.res.mem_list[i].bank_pos = detected.entries[i].offset;
+                game.res.mem_list[i].packed_size = detected.entries[i].packed_size;
+                game.res.mem_list[i].unpacked_size = detected.entries[i].unpacked_size;
+            }
+        }
+    }
 }
 
 fn game_res_update(game: *Game, num: u16) void {
@@ -910,6 +926,97 @@ fn decode_amiga(src: []const u8, dst: []u8) void {
     }
 }
 
+fn decodeAtari(source: []const u8, dest: []u8) void {
+    var src = source;
+    var dst = dest;
+    for (0..GAME_HEIGHT) |_| {
+        var x: usize = 0;
+        while (x < GAME_WIDTH) : (x += 16) {
+            inline for (0..16) |b| {
+                const mask = 1 << (15 - b);
+                var color: u8 = 0;
+                inline for (0..4) |p| {
+                    if ((read_be_uint16(src[p * 2 ..]) & mask) != 0) {
+                        color |= 1 << p;
+                    }
+                }
+                dst[0] = color;
+                dst = dst[1..];
+            }
+            src = src[8..];
+        }
+    }
+}
+
+fn clut(source: []const u8, pal: []const u8, w: i32, h: i32, bpp: i32, flipY: bool, colorKey: i32, dest: []u8) void {
+    var src = source;
+    var dst = dest;
+    var dstPitch = bpp * w;
+    if (flipY) {
+        dst = dst[@intCast((h - 1) * bpp * w)..];
+        dstPitch = -bpp * w;
+    }
+    for (0..@intCast(h)) |_| {
+        for (0..@intCast(w)) |x| {
+            const color: usize = src[x];
+            const b: i32 = pal[color * 4];
+            const g: i32 = pal[color * 4 + 1];
+            const r: i32 = pal[color * 4 + 2];
+            dst[x * @as(usize, @intCast(bpp))] = @intCast(r);
+            dst[x * @as(usize, @intCast(bpp)) + 1] = @intCast(g);
+            dst[x * @as(usize, @intCast(bpp)) + 2] = @intCast(b);
+            if (bpp == 4) {
+                dst[x * @as(usize, @intCast(bpp)) + 3] = if (color == 0 or (colorKey == ((r << 16) | (g << 8) | b))) 0 else 255;
+            }
+        }
+        src = src[@intCast(w)..];
+        dst = dst[@intCast(dstPitch)..];
+    }
+}
+
+fn decode_bitmap(src: []const u8, w: *u16, h: *u16, allocator: std.mem.Allocator) ?[]u8 {
+    if (!std.mem.eql(u8, src[0..2], "BM")) {
+        return null;
+    }
+    const imageOffset: u32 = read_le_uint32(src[0xA..]);
+    const width: i32 = @bitCast(read_le_uint32(src[0x12..]));
+    const height: i32 = @bitCast(read_le_uint32(src[0x16..]));
+    const depth: i32 = @intCast(read_le_uint16(src[0x1C..]));
+    const compression: i32 = @bitCast(read_le_uint32(src[0x1E..]));
+    if ((depth != 8 and depth != 32) or compression != 0) {
+        std.log.warn("Unhandled bitmap depth {} compression {}", .{ depth, compression });
+        return null;
+    }
+    const bpp = 3;
+    var dst = allocator.alloc(u8, @intCast(width * height * bpp)) catch {
+        std.log.warn("Failed to allocate bitmap buffer, width {} height {} bpp {}", .{ width, height, bpp });
+        return null;
+    };
+    if (depth == 8) {
+        const palette = src[14 + 40 ..]; // /BITMAPFILEHEADER + BITMAPINFOHEADER
+        const flipY = true;
+        clut(src[imageOffset..], palette, width, height, bpp, flipY, -1, dst);
+    } else {
+        assert(depth == 32 and bpp == 3);
+        var p = src[imageOffset..];
+        var y: i32 = height - 1;
+        while (y >= 0) : (y -= 1) {
+            var q = dst[@intCast(y * width * bpp)..];
+            for (0..@intCast(width)) |_| {
+                const color: u32 = read_le_uint32(p);
+                p = p[4..];
+                q[0] = @intCast((color >> 16) & 255);
+                q[1] = @intCast((color >> 8) & 255);
+                q[2] = @intCast(color & 255);
+                q = q[3..];
+            }
+        }
+    }
+    w.* = @intCast(width);
+    h.* = @intCast(height);
+    return dst;
+}
+
 fn game_video_scale_bitmap(game: *Game, src: []const u8, fmt: GameGfxFormat) void {
     game_gfx_draw_bitmap(game, game.video.buffers[0], src, GAME_WIDTH, GAME_HEIGHT, fmt);
 }
@@ -921,20 +1028,17 @@ fn game_video_copy_bitmap_ptr(game: *Game, src: []const u8) void {
         decode_amiga(src, &temp_bitmap);
         game_video_scale_bitmap(game, temp_bitmap[0..], .clut);
     } else if (game.res.data_type == .atari) {
-        unreachable;
-        // TODO:
-        // var temp_bitmap: [GAME_WIDTH * GAME_HEIGHT]u8 = undefined;
-        // decode_atari(src, temp_bitmap);
-        // game_video_scale_bitmap(game, temp_bitmap, .clut);
+        var temp_bitmap: [GAME_WIDTH * GAME_HEIGHT]u8 = undefined;
+        decodeAtari(src, &temp_bitmap);
+        game_video_scale_bitmap(game, &temp_bitmap, .clut);
     } else { // .BMP
-        unreachable;
-        // var w: i32 = undefined;
-        // var h: i32 = undefined;
-        // var buf = decode_bitmap(src, &w, &h);
-        // if (buf.len > 0) {
-        //     game_gfx_draw_bitmap(game, game.video.buffers[0], buf, w, h, .rgb);
-        //     free(buf);
-        // }
+        var w: u16 = undefined;
+        var h: u16 = undefined;
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        if (decode_bitmap(src, &w, &h, gpa.allocator())) |buf| {
+            game_gfx_draw_bitmap(game, game.video.buffers[0], buf, w, h, .rgb);
+            gpa.allocator().free(buf);
+        }
     }
 }
 
@@ -1320,17 +1424,16 @@ fn game_gfx_draw_quad_strip(game: *Game, buffer: u2, color: u8, qs: *const GameQ
 
 fn game_res_read_entries(game: *Game) !void {
     switch (game.res.data_type) {
-        // TODO:
-        // case DT_AMIGA:
-        // case DT_ATARI:
-        // 	GAME_ASSERT(game.res.num_mem_list>0);
-        // 	return;
+        .amiga, .atari => {
+            assert(game.res.num_mem_list > 0);
+        },
         .dos => {
             game.res.has_password_screen = false; // DOS demo versions do not have the resources
-            var stream = std.io.fixedBufferStream(game.res.data.mem_list);
+            const mem_list = game.res.data.mem_list orelse @panic("mem list is mandatory for pc version");
+            var stream = std.io.fixedBufferStream(mem_list);
             var reader = stream.reader();
             while (true) {
-                //GAME_ASSERT(game.res.num_mem_list < _ARRAYSIZE(game.res.mem_list));
+                assert(game.res.num_mem_list < game.res.mem_list.len);
                 var me = &game.res.mem_list[game.res.num_mem_list];
                 me.status = @enumFromInt(try reader.readByte());
                 if (me.status == .uninit) {
@@ -1348,7 +1451,6 @@ fn game_res_read_entries(game: *Game) !void {
                 game.res.num_mem_list += 1;
             }
         },
-        else => unreachable,
     }
 }
 
@@ -1383,6 +1485,14 @@ fn to_i16(a: i32) i16 {
 
 fn read_be_uint16(buf: []const u8) u16 {
     return std.mem.readInt(u16, buf[0..2], .big);
+}
+
+fn read_le_uint16(buf: []const u8) u32 {
+    return std.mem.readInt(u16, buf[0..2], .little);
+}
+
+fn read_le_uint32(buf: []const u8) u32 {
+    return std.mem.readInt(u32, buf[0..4], .little);
 }
 
 fn gameAudioInit(game: *Game, callback: GameAudioCallback) void {
@@ -1548,7 +1658,7 @@ fn gameAudioSfxHandlePattern(game: *Game, channel: u8, data: []const u8) void {
                 pat.sample_start = 8;
                 pat.sample_buffer = ptr;
                 pat.sample_len = read_be_uint16(ptr) *% 2;
-                const loopLen: u16 = read_be_uint16(ptr[2..]) * 2;
+                const loopLen: u16 = read_be_uint16(ptr[2..]) *% 2;
                 if (loopLen != 0) {
                     pat.loop_pos = pat.sample_len;
                     pat.loop_len = loopLen;
@@ -1625,7 +1735,7 @@ fn gameAudioSfxMixChannel(s: *i16, ch: *GameAudioSfxChannel) void {
     ch.pos.offset += ch.pos.inc;
     var pos2: i32 = pos1 + 1;
     if (ch.sample_loop_len != 0) {
-        if (pos1 >= ch.sample_loop_pos + ch.sample_loop_len - 1) {
+        if (pos1 >= ch.sample_loop_pos +% ch.sample_loop_len - 1) {
             pos2 = ch.sample_loop_pos;
             ch.pos.offset = @as(u64, @intCast(pos2)) << GameFrac.bits;
         }
