@@ -34,7 +34,7 @@ pub fn build(b: *Build) !void {
 
 fn buildNative(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Dependency, dep_cimgui: *Dependency) !void {
     const demo = b.addExecutable(.{
-        .name = "demo",
+        .name = "raw_zig",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
