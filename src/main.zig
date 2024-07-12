@@ -31,7 +31,7 @@ export fn init() void {
     audio.init(.{});
     prof.init();
     time.init();
-    raw.game_init(&state.game, .{
+    raw.gameInit(&state.game, .{
         .audio = .{
             .sample_rate = audio.sampleRate(),
             .callback = audio.push,
@@ -108,7 +108,7 @@ export fn frame() void {
 
     // call simgui.render() inside a sokol-gfx pass
     time.emuStart();
-    raw.game_exec(&state.game, state.frame_time_us / 1000) catch @panic("gameexec failed");
+    raw.gameExec(&state.game, state.frame_time_us / 1000) catch @panic("gameexec failed");
     prof.pushMicroSeconds(.EMU, time.emuEnd());
     // simgui.render();
 

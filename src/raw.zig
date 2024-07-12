@@ -405,7 +405,7 @@ pub fn displayInfo(game: ?*Game) glue.DisplayInfo {
     };
 }
 
-pub fn game_init(game: *Game, desc: GameDesc) !void {
+pub fn gameInit(game: *Game, desc: GameDesc) !void {
     //assert(game and desc);
     //if (desc.debug.callback.func) { GAME_ASSERT(desc.debug.stopped); }
     game.valid = true;
@@ -422,15 +422,15 @@ pub fn game_init(game: *Game, desc: GameDesc) !void {
     }
 
     // g_debugMask = GAME_DBG_INFO | GAME_DBG_VIDEO | GAME_DBG_SND | GAME_DBG_SCRIPT | GAME_DBG_BANK;
-    game_res_detect_version(game);
-    game_video_init(game);
+    gameResDetectVersion(game);
+    gameVideoInit(game);
     game.res.has_password_screen = true;
     game.res.script_bak = 0;
     game.res.script_cur = 0;
     game.res.vid_cur = GAME_MEM_BLOCK_SIZE - (GAME_WIDTH * GAME_HEIGHT / 2); // 4bpp bitmap
-    try game_res_read_entries(game);
+    try gameResReadEntries(game);
 
-    game_gfx_set_work_page_ptr(game, 2);
+    gameGfxSetWorkPagePtr(game, 2);
 
     var rnd = DefaultPrng.init(0);
     game.vm.vars[GAME_VAR_RANDOM_SEED] = rnd.random().int(i16);
@@ -453,14 +453,14 @@ pub fn game_init(game: *Game, desc: GameDesc) !void {
 
     const num = @intFromEnum(game.part_num);
     if (num < 36) {
-        game_vm_restart_at(game, @enumFromInt(restart_pos[num * 2]), restart_pos[num * 2 + 1]);
+        gameVmRestartAt(game, @enumFromInt(restart_pos[num * 2]), restart_pos[num * 2 + 1]);
     } else {
-        game_vm_restart_at(game, @enumFromInt(num), -1);
+        gameVmRestartAt(game, @enumFromInt(num), -1);
     }
     // game.title = game_res_get_game_title(game);
 }
 
-pub fn game_exec(game: *Game, ms: u32) !void {
+pub fn gameExec(game: *Game, ms: u32) !void {
     //GAME_ASSERT(game && game.valid);
     game.elapsed += ms;
 
@@ -483,7 +483,7 @@ pub fn game_exec(game: *Game, ms: u32) !void {
         // run with _debug hook
         // stopped = *game.debug.stopped;
         if (!stopped) {
-            stopped = stopped or try game_vm_run(game);
+            stopped = stopped or try gameVmRun(game);
             // game.debug.callback.func(game.debug.callback.user_data, game.vm.tasks[game.vm.current_task].pc);
         } else {
             game.sleep = 0;
@@ -501,7 +501,7 @@ pub fn game_exec(game: *Game, ms: u32) !void {
     //game.sleep += 20; // wait 20 ms (50 Hz)
 }
 
-fn game_vm_restart_at(game: *Game, part: GamePart, pos: i16) void {
+fn gameVmRestartAt(game: *Game, part: GamePart, pos: i16) void {
     gameAudioStopAll(game);
     if (game.res.data_type == .dos and part == .copy_protection) {
         // VAR(0x54) indicates if the "Out of this World" title screen should be presented
@@ -517,7 +517,7 @@ fn game_vm_restart_at(game: *Game, part: GamePart, pos: i16) void {
         // Use "Another World" title screen if language is set to French
         game.vm.vars[0x54] = if (game.res.lang == .fr) 0x1 else 0x81;
     }
-    game_res_setup_part(game, @intFromEnum(part));
+    gameResSetupPart(game, @intFromEnum(part));
     for (0..GAME_NUM_TASKS) |i| {
         game.vm.tasks[i].pc = GAME_INACTIVE_TASK;
         game.vm.tasks[i].next_pc = GAME_INACTIVE_TASK;
@@ -538,9 +538,9 @@ fn game_vm_restart_at(game: *Game, part: GamePart, pos: i16) void {
     }
 }
 
-fn game_vm_setup_tasks(game: *Game) void {
+fn gameVmSetupTasks(game: *Game) void {
     if (game.res.next_part) |part| {
-        game_vm_restart_at(game, part, -1);
+        gameVmRestartAt(game, part, -1);
         game.res.next_part = null;
     }
     for (0..GAME_NUM_TASKS) |i| {
@@ -553,29 +553,29 @@ fn game_vm_setup_tasks(game: *Game) void {
     }
 }
 
-fn game_vm_execute_task(game: *Game) !void {
-    const opcode = fetch_byte(&game.vm.ptr);
+fn gameVmExecuteTask(game: *Game) !void {
+    const opcode = fetchByte(&game.vm.ptr);
     if ((opcode & 0x80) != 0) {
-        const off = ((@as(u16, opcode) << 8) | fetch_byte(&game.vm.ptr)) << 1;
+        const off = ((@as(u16, opcode) << 8) | fetchByte(&game.vm.ptr)) << 1;
         game.res.use_seg_video2 = false;
-        var pt: GamePoint = .{ .x = fetch_byte(&game.vm.ptr), .y = fetch_byte(&game.vm.ptr) };
+        var pt: GamePoint = .{ .x = fetchByte(&game.vm.ptr), .y = fetchByte(&game.vm.ptr) };
         const h = pt.y - 199;
         if (h > 0) {
             pt.y = 199;
             pt.x += h;
         }
         std.log.debug("vid_opcd_0x80 : opcode=0x{X} off=0x{X} x={} y={}", .{ opcode, off, pt.x, pt.y });
-        game_video_set_data_buffer(game, game.res.seg_video1, off);
-        game_video_draw_shape(game, 0xFF, 64, pt);
+        gameVideoSetDataBuffer(game, game.res.seg_video1, off);
+        gameVideoDrawShape(game, 0xFF, 64, pt);
     } else if ((opcode & 0x40) == 0x40) {
         var pt: GamePoint = undefined;
-        const offsetHi = fetch_byte(&game.vm.ptr);
-        const off = ((@as(u16, offsetHi) << 8) | fetch_byte(&game.vm.ptr)) << 1;
-        pt.x = fetch_byte(&game.vm.ptr);
+        const offsetHi = fetchByte(&game.vm.ptr);
+        const off = ((@as(u16, offsetHi) << 8) | fetchByte(&game.vm.ptr)) << 1;
+        pt.x = fetchByte(&game.vm.ptr);
         game.res.use_seg_video2 = false;
         if ((opcode & 0x20) == 0) {
             if ((opcode & 0x10) == 0) {
-                pt.x = (pt.x << 8) | fetch_byte(&game.vm.ptr);
+                pt.x = (pt.x << 8) | fetchByte(&game.vm.ptr);
             } else {
                 pt.x = game.vm.vars[@intCast(pt.x)];
             }
@@ -584,10 +584,10 @@ fn game_vm_execute_task(game: *Game) !void {
                 pt.x += 0x100;
             }
         }
-        pt.y = fetch_byte(&game.vm.ptr);
+        pt.y = fetchByte(&game.vm.ptr);
         if ((opcode & 8) == 0) {
             if ((opcode & 4) == 0) {
-                pt.y = (pt.y << 8) | fetch_byte(&game.vm.ptr);
+                pt.y = (pt.y << 8) | fetchByte(&game.vm.ptr);
             } else {
                 pt.y = game.vm.vars[@intCast(pt.y)];
             }
@@ -595,18 +595,18 @@ fn game_vm_execute_task(game: *Game) !void {
         var zoom: u16 = 64;
         if ((opcode & 2) == 0) {
             if ((opcode & 1) != 0) {
-                zoom = @intCast(game.vm.vars[fetch_byte(&game.vm.ptr)]);
+                zoom = @intCast(game.vm.vars[fetchByte(&game.vm.ptr)]);
             }
         } else {
             if ((opcode & 1) != 0) {
                 game.res.use_seg_video2 = true;
             } else {
-                zoom = fetch_byte(&game.vm.ptr);
+                zoom = fetchByte(&game.vm.ptr);
             }
         }
         std.log.debug("vid_opcd_0x40 : off=0x{X} x={} y={}", .{ off, pt.x, pt.y });
-        game_video_set_data_buffer(game, if (game.res.use_seg_video2) game.res.seg_video2 else game.res.seg_video1, off);
-        game_video_draw_shape(game, 0xFF, zoom, pt);
+        gameVideoSetDataBuffer(game, if (game.res.use_seg_video2) game.res.seg_video2 else game.res.seg_video1, off);
+        gameVideoDrawShape(game, 0xFF, zoom, pt);
     } else if (opcode > 0x1A) {
         std.log.err("Script::executeTask() ec=0xFFF invalid opcode=0x{X}", .{opcode});
         return error.InvalidOpcode;
@@ -615,7 +615,7 @@ fn game_vm_execute_task(game: *Game) !void {
     }
 }
 
-fn game_vm_run(game: *Game) !bool {
+fn gameVmRun(game: *Game) !bool {
     var i = game.vm.current_task;
     if (!game.input.quit and game.vm.tasks[i].state == 0) {
         const n = game.vm.tasks[i].pc;
@@ -624,7 +624,7 @@ fn game_vm_run(game: *Game) !bool {
             game.vm.ptr = .{ .data = game.res.seg_code, .pc = n };
             game.vm.paused = false;
             // std.log.debug("Script::runTasks() i=0x{X} n=0x{X}", .{ i, n });
-            try game_vm_execute_task(game);
+            try gameVmExecuteTask(game);
             game.vm.tasks[i].pc = game.vm.ptr.pc;
             // std.log.debug("Script::runTasks() i=0x{X} pos=0x{X}", .{ i, game.vm.tasks[i].pc });
             if (!game.vm.paused and game.vm.tasks[i].pc != GAME_INACTIVE_TASK) {
@@ -640,8 +640,8 @@ fn game_vm_run(game: *Game) !bool {
         i = (i + 1) % GAME_NUM_TASKS;
         if (i == 0) {
             result = true;
-            game_vm_setup_tasks(game);
-            game_vm_update_input(game);
+            gameVmSetupTasks(game);
+            gameVmUpdateInput(game);
         }
 
         if (game.vm.tasks[i].pc != GAME_INACTIVE_TASK) {
@@ -654,7 +654,7 @@ fn game_vm_run(game: *Game) !bool {
     return result;
 }
 
-fn game_vm_update_input(game: *Game) void {
+fn gameVmUpdateInput(game: *Game) void {
     if (game.res.current_part == .password) {
         const c = game.input.last_char;
         if (c == 8 or c == 0 or (c >= 'a' and c <= 'z')) {
@@ -722,7 +722,7 @@ fn game_vm_update_input(game: *Game) void {
     }
 }
 
-fn game_res_invalidate_all(game: *Game) void {
+fn gameResInvalidateAll(game: *Game) void {
     for (0..game.res.num_mem_list) |i| {
         game.res.mem_list[i].status = .null;
     }
@@ -730,7 +730,7 @@ fn game_res_invalidate_all(game: *Game) void {
     game.video.current_pal = 0xFF;
 }
 
-fn game_res_read_bank(game: *Game, me: *const GameMemEntry, dst_buf: []u8) bool {
+fn gameResReadBank(game: *Game, me: *const GameMemEntry, dst_buf: []u8) bool {
     if (me.bank_num > 0xd)
         return false;
 
@@ -746,7 +746,7 @@ fn game_res_read_bank(game: *Game, me: *const GameMemEntry, dst_buf: []u8) bool 
     return false;
 }
 
-fn game_res_load(game: *Game) void {
+fn gameResLoad(game: *Game) void {
     while (true) {
         var me_found: ?*GameMemEntry = null;
 
@@ -779,9 +779,9 @@ fn game_res_load(game: *Game) void {
                 me.status = .null;
             } else {
                 std.log.debug("Resource::load() bufPos=0x{X} size={} type={} pos=0x{X} bankNum={}", .{ game.res.mem.len - memPtr.len, me.packed_size, me.type, me.bank_pos, me.bank_num });
-                if (game_res_read_bank(game, me, memPtr)) {
+                if (gameResReadBank(game, me, memPtr)) {
                     if (me.type == .bitmap) {
-                        game_video_copy_bitmap_ptr(game, game.res.mem[game.res.vid_cur..]);
+                        gameVideoCopyBitmapPtr(game, game.res.mem[game.res.vid_cur..]);
                         me.status = .null;
                     } else {
                         me.buf_ptr = memPtr;
@@ -802,7 +802,7 @@ fn game_res_load(game: *Game) void {
     }
 }
 
-fn game_res_setup_part(game: *Game, ptrId: usize) void {
+fn gameResSetupPart(game: *Game, ptrId: usize) void {
     if (@as(GamePart, @enumFromInt(ptrId)) != game.res.current_part) {
         var ipal: u8 = 0;
         var icod: u8 = 0;
@@ -817,14 +817,14 @@ fn game_res_setup_part(game: *Game, ptrId: usize) void {
         } else {
             std.log.err("Resource::setupPart() ec=0xF07 invalid part", .{});
         }
-        game_res_invalidate_all(game);
+        gameResInvalidateAll(game);
         game.res.mem_list[ipal].status = .toload;
         game.res.mem_list[icod].status = .toload;
         game.res.mem_list[ivd1].status = .toload;
         if (ivd2 != 0) {
             game.res.mem_list[ivd2].status = .toload;
         }
-        game_res_load(game);
+        gameResLoad(game);
         game.res.seg_video_pal = game.res.mem_list[ipal].buf_ptr;
         game.res.seg_code = game.res.mem_list[icod].buf_ptr;
         game.res.seg_code_size = @intCast(game.res.mem_list[icod].unpacked_size);
@@ -837,7 +837,7 @@ fn game_res_setup_part(game: *Game, ptrId: usize) void {
     game.res.script_bak = game.res.script_cur;
 }
 
-fn game_res_detect_version(game: *Game) void {
+fn gameResDetectVersion(game: *Game) void {
     if (game.res.data.mem_list) |_| {
         game.res.data_type = .dos;
         std.log.debug("Using DOS data files", .{});
@@ -862,7 +862,7 @@ fn game_res_detect_version(game: *Game) void {
     }
 }
 
-fn game_res_update(game: *Game, num: u16) void {
+fn gameResUpdate(game: *Game, num: u16) void {
     if (num > 16000) {
         game.res.next_part = @enumFromInt(num);
         return;
@@ -871,19 +871,19 @@ fn game_res_update(game: *Game, num: u16) void {
     var me = &game.res.mem_list[num];
     if (me.status == .null) {
         me.status = .toload;
-        game_res_load(game);
+        gameResLoad(game);
     }
 }
 
-fn game_video_init(game: *Game) void {
+fn gameVideoInit(game: *Game) void {
     game.video.next_pal = 0xFF;
     game.video.current_pal = 0xFF;
-    game.video.buffers[2] = game_video_get_page_ptr(game, 1);
-    game.video.buffers[1] = game_video_get_page_ptr(game, 2);
-    game_video_set_work_page_ptr(game, 0xfe);
+    game.video.buffers[2] = gameVideoGetPagePtr(game, 1);
+    game.video.buffers[1] = gameVideoGetPagePtr(game, 2);
+    gameVideoSetWorkPagePtr(game, 0xfe);
 }
 
-fn game_video_get_page_ptr(game: *Game, page: u8) u2 {
+fn gameVideoGetPagePtr(game: *Game, page: u8) u2 {
     if (page <= 3) {
         return @truncate(page);
     }
@@ -898,12 +898,12 @@ fn game_video_get_page_ptr(game: *Game, page: u8) u2 {
     }
 }
 
-fn game_video_set_work_page_ptr(game: *Game, page: u8) void {
+fn gameVideoSetWorkPagePtr(game: *Game, page: u8) void {
     std.log.debug("Video::setWorkPagePtr({})", .{page});
-    game.video.buffers[0] = game_video_get_page_ptr(game, page);
+    game.video.buffers[0] = gameVideoGetPagePtr(game, page);
 }
 
-fn decode_amiga(src: []const u8, dst: []u8) void {
+fn decodeAmiga(src: []const u8, dst: []u8) void {
     const plane_size = GAME_HEIGHT * GAME_WIDTH / 8;
     var s: usize = 0;
     var d: usize = 0;
@@ -936,7 +936,7 @@ fn decodeAtari(source: []const u8, dest: []u8) void {
                 const mask = 1 << (15 - b);
                 var color: u8 = 0;
                 inline for (0..4) |p| {
-                    if ((read_be_uint16(src[p * 2 ..]) & mask) != 0) {
+                    if ((readBeU16(src[p * 2 ..]) & mask) != 0) {
                         color |= 1 << p;
                     }
                 }
@@ -974,15 +974,15 @@ fn clut(source: []const u8, pal: []const u8, w: i32, h: i32, bpp: i32, flipY: bo
     }
 }
 
-fn decode_bitmap(src: []const u8, w: *u16, h: *u16, allocator: std.mem.Allocator) ?[]u8 {
+fn decodeBitmap(src: []const u8, w: *u16, h: *u16, allocator: std.mem.Allocator) ?[]u8 {
     if (!std.mem.eql(u8, src[0..2], "BM")) {
         return null;
     }
-    const imageOffset: u32 = read_le_uint32(src[0xA..]);
-    const width: i32 = @bitCast(read_le_uint32(src[0x12..]));
-    const height: i32 = @bitCast(read_le_uint32(src[0x16..]));
-    const depth: i32 = @intCast(read_le_uint16(src[0x1C..]));
-    const compression: i32 = @bitCast(read_le_uint32(src[0x1E..]));
+    const imageOffset: u32 = readLeU32(src[0xA..]);
+    const width: i32 = @bitCast(readLeU32(src[0x12..]));
+    const height: i32 = @bitCast(readLeU32(src[0x16..]));
+    const depth: i32 = @intCast(readLeU16(src[0x1C..]));
+    const compression: i32 = @bitCast(readLeU32(src[0x1E..]));
     if ((depth != 8 and depth != 32) or compression != 0) {
         std.log.warn("Unhandled bitmap depth {} compression {}", .{ depth, compression });
         return null;
@@ -1003,7 +1003,7 @@ fn decode_bitmap(src: []const u8, w: *u16, h: *u16, allocator: std.mem.Allocator
         while (y >= 0) : (y -= 1) {
             var q = dst[@intCast(y * width * bpp)..];
             for (0..@intCast(width)) |_| {
-                const color: u32 = read_le_uint32(p);
+                const color: u32 = readLeU32(p);
                 p = p[4..];
                 q[0] = @intCast((color >> 16) & 255);
                 q[1] = @intCast((color >> 8) & 255);
@@ -1017,39 +1017,40 @@ fn decode_bitmap(src: []const u8, w: *u16, h: *u16, allocator: std.mem.Allocator
     return dst;
 }
 
-fn game_video_scale_bitmap(game: *Game, src: []const u8, fmt: GameGfxFormat) void {
-    game_gfx_draw_bitmap(game, game.video.buffers[0], src, GAME_WIDTH, GAME_HEIGHT, fmt);
+fn gameVideoScaleBitmap(game: *Game, src: []const u8, fmt: GameGfxFormat) void {
+    gameGfxDrawBitmap(game, game.video.buffers[0], src, GAME_WIDTH, GAME_HEIGHT, fmt);
 }
 
-fn game_video_copy_bitmap_ptr(game: *Game, src: []const u8) void {
+fn gameVideoCopyBitmapPtr(game: *Game, src: []const u8) void {
     // _ = game;
     if (game.res.data_type == .dos or game.res.data_type == .amiga) {
         var temp_bitmap: [GAME_WIDTH * GAME_HEIGHT]u8 = undefined;
-        decode_amiga(src, &temp_bitmap);
-        game_video_scale_bitmap(game, temp_bitmap[0..], .clut);
+        decodeAmiga(src, &temp_bitmap);
+        gameVideoScaleBitmap(game, temp_bitmap[0..], .clut);
     } else if (game.res.data_type == .atari) {
         var temp_bitmap: [GAME_WIDTH * GAME_HEIGHT]u8 = undefined;
         decodeAtari(src, &temp_bitmap);
-        game_video_scale_bitmap(game, &temp_bitmap, .clut);
+        gameVideoScaleBitmap(game, &temp_bitmap, .clut);
     } else { // .BMP
         var w: u16 = undefined;
         var h: u16 = undefined;
         var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        if (decode_bitmap(src, &w, &h, gpa.allocator())) |buf| {
-            game_gfx_draw_bitmap(game, game.video.buffers[0], buf, w, h, .rgb);
+        if (decodeBitmap(src, &w, &h, gpa.allocator())) |buf| {
+            gameGfxDrawBitmap(game, game.video.buffers[0], buf, w, h, .rgb);
             gpa.allocator().free(buf);
         }
     }
 }
 
-fn game_video_read_palette_ega(buf: []const u8, num: u8, pal: [16]u32) void {
+fn gameVideoReadPaletteEga(buf: []const u8, num: u8, pal: [16]u32) void {
+    // TODO:
     _ = buf;
     _ = num;
     _ = pal;
     unreachable;
 }
 
-fn game_video_read_palette_amiga(buf: []const u8, num: u8, pal: *[16]u32) void {
+fn gameVideoReadPaletteAmiga(buf: []const u8, num: u8, pal: *[16]u32) void {
     var p = buf[@as(usize, @intCast(num)) * 16 * @sizeOf(u16) ..];
     for (0..16) |i| {
         const color = std.mem.readInt(u16, p[i * 2 ..][0..2], .big);
@@ -1063,94 +1064,94 @@ fn game_video_read_palette_amiga(buf: []const u8, num: u8, pal: *[16]u32) void {
     }
 }
 
-fn game_video_change_pal(game: *Game, pal_num: u8) void {
+fn gameVideoChangePal(game: *Game, pal_num: u8) void {
     if (pal_num < 32 and pal_num != game.video.current_pal) {
         var pal: [16]u32 = [1]u32{0} ** 16;
         if (game.res.data_type == .dos and game.video.use_ega) {
-            game_video_read_palette_ega(game.res.seg_video_pal, pal_num, pal);
+            gameVideoReadPaletteEga(game.res.seg_video_pal, pal_num, pal);
         } else {
-            game_video_read_palette_amiga(game.res.seg_video_pal, pal_num, &pal);
+            gameVideoReadPaletteAmiga(game.res.seg_video_pal, pal_num, &pal);
         }
-        game_gfx_set_palette(game, pal);
+        gameGfxSetPalette(game, pal);
         game.video.current_pal = pal_num;
     }
 }
 
-fn game_video_fill_page(game: *Game, page: u8, color: u8) void {
+fn gameVideoFillPage(game: *Game, page: u8, color: u8) void {
     std.log.debug("Video::fillPage({}, {})", .{ page, color });
-    game_gfx_clear_buffer(game, game_video_get_page_ptr(game, page), color);
+    gameGfxClearBuffer(game, gameVideoGetPagePtr(game, page), color);
 }
 
-fn game_video_copy_page(game: *Game, s: u8, dst: u8, vscroll: i16) void {
+fn gameVideoCopyPage(game: *Game, s: u8, dst: u8, vscroll: i16) void {
     var src = s;
     std.log.debug("Video::copyPage({}, {})", .{ src, dst });
     if (src < 0xFE) {
         src = src & 0xBF; //~0x40
     }
     if (src >= 0xFE or (src & 0x80) == 0) { // no vscroll
-        game_gfx_copy_buffer(game, game_video_get_page_ptr(game, dst), game_video_get_page_ptr(game, src), 0);
+        gameGfxCopyBuffer(game, gameVideoGetPagePtr(game, dst), gameVideoGetPagePtr(game, src), 0);
     } else {
-        const sl = game_video_get_page_ptr(game, src & 3);
-        const dl = game_video_get_page_ptr(game, dst);
+        const sl = gameVideoGetPagePtr(game, src & 3);
+        const dl = gameVideoGetPagePtr(game, dst);
         if (sl != dl and vscroll >= -199 and vscroll <= 199) {
-            game_gfx_copy_buffer(game, dl, sl, vscroll);
+            gameGfxCopyBuffer(game, dl, sl, vscroll);
         }
     }
 }
 
-fn game_video_set_data_buffer(game: *Game, dataBuf: []u8, offset: u16) void {
+fn gameVideoSetDataBuffer(game: *Game, dataBuf: []u8, offset: u16) void {
     game.video.data_buf = dataBuf;
     game.video.p_data = .{ .data = dataBuf, .pc = offset };
 }
 
-fn game_video_draw_shape_parts(game: *Game, zoom: u16, pgc: GamePoint) void {
+fn gameVideoDrawShapeParts(game: *Game, zoom: u16, pgc: GamePoint) void {
     const pt = GamePoint{
-        .x = pgc.x - @as(i16, @intCast(fetch_byte(&game.video.p_data) * zoom / 64)),
-        .y = pgc.y - @as(i16, @intCast(fetch_byte(&game.video.p_data) * zoom / 64)),
+        .x = pgc.x - @as(i16, @intCast(fetchByte(&game.video.p_data) * zoom / 64)),
+        .y = pgc.y - @as(i16, @intCast(fetchByte(&game.video.p_data) * zoom / 64)),
     };
-    const n: usize = @intCast(fetch_byte(&game.video.p_data));
+    const n: usize = @intCast(fetchByte(&game.video.p_data));
     std.log.debug("Video::drawShapeParts n={}", .{n});
     for (0..n) |_| {
-        var offset = fetch_word(&game.video.p_data);
+        var offset = fetchWord(&game.video.p_data);
         const po = GamePoint{
-            .x = @intCast(@as(i32, @intCast(pt.x)) + @divTrunc(@as(i32, @intCast(fetch_byte(&game.video.p_data))) * zoom, 64)),
-            .y = @intCast(@as(i32, @intCast(pt.y)) + @divTrunc(@as(i32, @intCast(fetch_byte(&game.video.p_data))) * zoom, 64)),
+            .x = @intCast(@as(i32, @intCast(pt.x)) + @divTrunc(@as(i32, @intCast(fetchByte(&game.video.p_data))) * zoom, 64)),
+            .y = @intCast(@as(i32, @intCast(pt.y)) + @divTrunc(@as(i32, @intCast(fetchByte(&game.video.p_data))) * zoom, 64)),
         };
         var color: u16 = 0xFF;
         if ((offset & 0x8000) != 0) {
-            color = fetch_byte(&game.video.p_data);
-            _ = fetch_byte(&game.video.p_data);
+            color = fetchByte(&game.video.p_data);
+            _ = fetchByte(&game.video.p_data);
             color &= 0x7F;
         }
         offset <<= 1;
         const bak = game.video.p_data.pc;
         game.video.p_data = .{ .data = game.video.data_buf, .pc = offset };
-        game_video_draw_shape(game, @truncate(color), zoom, po);
+        gameVideoDrawShape(game, @truncate(color), zoom, po);
         game.video.p_data.pc = bak;
     }
 }
 
-fn game_video_draw_shape(game: *Game, c: u8, zoom: u16, pt: GamePoint) void {
+fn gameVideoDrawShape(game: *Game, c: u8, zoom: u16, pt: GamePoint) void {
     var color = c;
-    var i = fetch_byte(&game.video.p_data);
+    var i = fetchByte(&game.video.p_data);
     if (i >= 0xC0) {
         if ((color & 0x80) != 0) {
             color = i & 0x3F;
         }
-        game_video_fill_polygon(game, color, zoom, pt);
+        gameVideoFillPolygon(game, color, zoom, pt);
     } else {
         i &= 0x3F;
         if (i == 1) {
             std.log.warn("Video::drawShape() ec=0xF80 (i != 2)", .{});
         } else if (i == 2) {
-            game_video_draw_shape_parts(game, zoom, pt);
+            gameVideoDrawShapeParts(game, zoom, pt);
         } else {
             std.log.warn("Video::drawShape() ec=0xFBB (i != 2)", .{});
         }
     }
 }
 
-fn game_video_fill_polygon(game: *Game, color: u16, zoom: u16, pt: GamePoint) void {
+fn gameVideoFillPolygon(game: *Game, color: u16, zoom: u16, pt: GamePoint) void {
     var pc = game.video.p_data;
 
     const bbw: u16 = pc.data[pc.pc] * zoom / 64;
@@ -1183,9 +1184,9 @@ fn game_video_fill_polygon(game: *Game, color: u16, zoom: u16, pt: GamePoint) vo
     }
 
     if (qs.num_vertices == 4 and bbw == 0 and bbh <= 1) {
-        game_gfx_draw_point_page(game, game.video.buffers[0], @truncate(color), pt);
+        gameGfxDrawPointPage(game, game.video.buffers[0], @truncate(color), pt);
     } else {
-        game_gfx_draw_quad_strip(game, game.video.buffers[0], @truncate(color), &qs);
+        gameGfxDrawQuadStrip(game, game.video.buffers[0], @truncate(color), &qs);
     }
 }
 
@@ -1195,23 +1196,23 @@ fn swap(x: anytype, y: anytype) void {
     x.* = tmp;
 }
 
-fn game_video_update_display(game: *Game, page: u8) void {
+fn gameVideoUpdateDisplay(game: *Game, page: u8) void {
     std.log.debug("Video::updateDisplay({})", .{page});
     if (page != 0xFE) {
         if (page == 0xFF) {
             swap(&game.video.buffers[1], &game.video.buffers[2]);
         } else {
-            game.video.buffers[1] = game_video_get_page_ptr(game, page);
+            game.video.buffers[1] = gameVideoGetPagePtr(game, page);
         }
     }
     if (game.video.next_pal != 0xFF) {
-        game_video_change_pal(game, game.video.next_pal);
+        gameVideoChangePal(game, game.video.next_pal);
         game.video.next_pal = 0xFF;
     }
-    game_gfx_draw_buffer(game, game.video.buffers[1]);
+    gameGfxDrawBuffer(game, game.video.buffers[1]);
 }
 
-fn game_video_draw_string(game: *Game, color: u8, xx: u16, yy: u16, strId: u16) void {
+fn gameVideoDrawString(game: *Game, color: u8, xx: u16, yy: u16, strId: u16) void {
     var x = xx;
     var y = yy;
     const escapedChars = false;
@@ -1235,50 +1236,50 @@ fn game_video_draw_string(game: *Game, color: u8, xx: u16, yy: u16, strId: u16) 
             }
         } else {
             const pt: GamePoint = .{ .x = @as(i16, @bitCast(x * 8)), .y = @as(i16, @bitCast(y)) };
-            game_gfx_draw_string_char(game, game.video.buffers[0], color, str[i], pt);
+            gameGfxDrawStringChar(game, game.video.buffers[0], color, str[i], pt);
             x += 1;
         }
     }
 }
 
-fn game_gfx_set_palette(game: *Game, colors: [16]u32) void {
+fn gameGfxSetPalette(game: *Game, colors: [16]u32) void {
     assert(colors.len <= 16);
     @memcpy(game.gfx.palette[0..16], colors[0..16]);
 }
 
-fn game_gfx_get_page_ptr(game: *Game, page: u2) *[GAME_WIDTH * GAME_HEIGHT]u8 {
+fn gameGfxGetPagePtr(game: *Game, page: u2) *[GAME_WIDTH * GAME_HEIGHT]u8 {
     return &game.gfx.fbs[page].buffer;
 }
 
-fn game_gfx_set_work_page_ptr(game: *Game, page: u2) void {
+fn gameGfxSetWorkPagePtr(game: *Game, page: u2) void {
     game.gfx.draw_page = page;
 }
 
-fn game_gfx_clear_buffer(game: *Game, page: u2, color: u8) void {
-    @memset(game_gfx_get_page_ptr(game, page), color);
+fn gameGfxClearBuffer(game: *Game, page: u2, color: u8) void {
+    @memset(gameGfxGetPagePtr(game, page), color);
 }
 
-fn game_gfx_copy_buffer(game: *Game, dst: u2, src: u2, vscroll: i32) void {
+fn gameGfxCopyBuffer(game: *Game, dst: u2, src: u2, vscroll: i32) void {
     if (vscroll == 0) {
-        @memcpy(game_gfx_get_page_ptr(game, dst), game_gfx_get_page_ptr(game, src));
+        @memcpy(gameGfxGetPagePtr(game, dst), gameGfxGetPagePtr(game, src));
     } else if (vscroll >= -199 and vscroll <= 199) {
         const dy = vscroll;
         if (dy < 0) {
             const size: usize = @as(usize, @intCast(GAME_HEIGHT + dy)) * GAME_WIDTH;
-            @memcpy(game_gfx_get_page_ptr(game, dst)[0..size], game_gfx_get_page_ptr(game, src)[@as(usize, @intCast(-dy * GAME_WIDTH))..][0..size]);
+            @memcpy(gameGfxGetPagePtr(game, dst)[0..size], gameGfxGetPagePtr(game, src)[@as(usize, @intCast(-dy * GAME_WIDTH))..][0..size]);
         } else {
             const size: usize = @as(usize, @intCast(GAME_HEIGHT - dy)) * GAME_WIDTH;
-            @memcpy(game_gfx_get_page_ptr(game, dst)[@as(usize, @intCast(dy * GAME_WIDTH))..][0..size], game_gfx_get_page_ptr(game, src)[0..size]);
+            @memcpy(gameGfxGetPagePtr(game, dst)[@as(usize, @intCast(dy * GAME_WIDTH))..][0..size], gameGfxGetPagePtr(game, src)[0..size]);
         }
     }
 }
 
-fn game_gfx_draw_buffer(game: *Game, num: u2) void {
-    const src = game_gfx_get_page_ptr(game, num);
+fn gameGfxDrawBuffer(game: *Game, num: u2) void {
+    const src = gameGfxGetPagePtr(game, num);
     @memcpy(game.gfx.fb[0..], src[0 .. GAME_WIDTH * GAME_HEIGHT]);
 }
 
-fn game_gfx_draw_char(game: *Game, c: u8, x: u16, y: u16, color: u8) void {
+fn gameGfxDrawChar(game: *Game, c: u8, x: u16, y: u16, color: u8) void {
     if ((x <= GAME_WIDTH - 8) and (y <= GAME_HEIGHT - 8)) {
         const ft = font[(@as(usize, @intCast(c - 0x20))) * 8 ..];
         const offset = (x + y * GAME_WIDTH);
@@ -1293,12 +1294,12 @@ fn game_gfx_draw_char(game: *Game, c: u8, x: u16, y: u16, color: u8) void {
     }
 }
 
-fn game_gfx_draw_string_char(game: *Game, page: u2, color: u8, c: u8, pt: GamePoint) void {
-    game_gfx_set_work_page_ptr(game, page);
-    game_gfx_draw_char(game, c, @bitCast(pt.x), @bitCast(pt.y), color);
+fn gameGfxDrawStringChar(game: *Game, page: u2, color: u8, c: u8, pt: GamePoint) void {
+    gameGfxSetWorkPagePtr(game, page);
+    gameGfxDrawChar(game, c, @bitCast(pt.x), @bitCast(pt.y), color);
 }
 
-fn game_gfx_draw_point(game: *Game, x: i16, y: i16, color: u8) void {
+fn gameGfxDrawPoint(game: *Game, x: i16, y: i16, color: u8) void {
     const offset = @as(i32, @intCast(y)) * GAME_WIDTH + (@as(i32, @intCast(x)));
     game.gfx.fbs[game.gfx.draw_page].buffer[@intCast(offset)] = switch (color) {
         GFX_COL_ALPHA => game.gfx.fbs[game.gfx.draw_page].buffer[@intCast(offset)] | 8,
@@ -1307,19 +1308,19 @@ fn game_gfx_draw_point(game: *Game, x: i16, y: i16, color: u8) void {
     };
 }
 
-fn game_gfx_draw_point_page(game: *Game, page: u2, color: u8, pt: GamePoint) void {
-    game_gfx_set_work_page_ptr(game, page);
-    game_gfx_draw_point(game, pt.x, pt.y, color);
+fn gameGfxDrawPointPage(game: *Game, page: u2, color: u8, pt: GamePoint) void {
+    gameGfxSetWorkPagePtr(game, page);
+    gameGfxDrawPoint(game, pt.x, pt.y, color);
 }
 
-fn calc_step(p1: GamePoint, p2: GamePoint, dy: *u16) u32 {
+fn calcStep(p1: GamePoint, p2: GamePoint, dy: *u16) u32 {
     dy.* = @intCast(p2.y - p1.y);
     const delta: u16 = if (dy.* <= 1) 1 else dy.*;
     // TODO: check this
     return @bitCast(@as(i32, @intCast(p2.x - p1.x)) * @as(i32, @intCast(0x4000 / delta)) << 2);
 }
 
-fn draw_line_p(game: *Game, x1: i16, x2: i16, y: i16, _: u8) void {
+fn drawLineP(game: *Game, x1: i16, x2: i16, y: i16, _: u8) void {
     if (game.gfx.draw_page == 0) {
         return;
     }
@@ -1330,7 +1331,7 @@ fn draw_line_p(game: *Game, x1: i16, x2: i16, y: i16, _: u8) void {
     std.mem.copyForwards(u8, game.gfx.fbs[game.gfx.draw_page].buffer[@intCast(offset)..][0..@intCast(w)], game.gfx.fbs[0].buffer[@intCast(offset)..][0..@intCast(w)]);
 }
 
-fn draw_line_n(game: *Game, x1: i16, x2: i16, y: i16, color: u8) void {
+fn drawLineN(game: *Game, x1: i16, x2: i16, y: i16, color: u8) void {
     const xmax = @as(i32, @intCast(@max(x1, x2)));
     const xmin = @as(i32, @intCast(@min(x1, x2)));
     const w: i32 = xmax - xmin + 1;
@@ -1338,7 +1339,7 @@ fn draw_line_n(game: *Game, x1: i16, x2: i16, y: i16, color: u8) void {
     @memset(game.gfx.fbs[game.gfx.draw_page].buffer[@intCast(offset)..@intCast(offset + w)], color);
 }
 
-fn draw_line_trans(game: *Game, x1: i16, x2: i16, y: i16, _: u8) void {
+fn drawLineTrans(game: *Game, x1: i16, x2: i16, y: i16, _: u8) void {
     const xmax = @max(x1, x2);
     const xmin = @min(x1, x2);
     const w: usize = @intCast(xmax - xmin + 1);
@@ -1348,15 +1349,15 @@ fn draw_line_trans(game: *Game, x1: i16, x2: i16, y: i16, _: u8) void {
     }
 }
 
-fn game_gfx_draw_bitmap(game: *Game, page: u2, data: []const u8, w: u16, h: u16, fmt: GameGfxFormat) void {
+fn gameGfxDrawBitmap(game: *Game, page: u2, data: []const u8, w: u16, h: u16, fmt: GameGfxFormat) void {
     if (fmt == .clut and GAME_WIDTH == w and GAME_HEIGHT == h) {
-        @memcpy(game_gfx_get_page_ptr(game, page)[0 .. w * h], data);
+        @memcpy(gameGfxGetPagePtr(game, page)[0 .. w * h], data);
         return;
     }
     unreachable;
 }
 
-fn game_gfx_draw_polygon(game: *Game, color: u8, quad_strip: *const GameQuadStrip) void {
+fn gameGfxDrawPolygon(game: *Game, color: u8, quad_strip: *const GameQuadStrip) void {
     const qs = quad_strip;
 
     var i: usize = 0;
@@ -1370,9 +1371,9 @@ fn game_gfx_draw_polygon(game: *Game, color: u8, quad_strip: *const GameQuadStri
     j -= 1;
 
     const draw_func = switch (color) {
-        GFX_COL_PAGE => &draw_line_p,
-        GFX_COL_ALPHA => &draw_line_trans,
-        else => &draw_line_n,
+        GFX_COL_PAGE => &drawLineP,
+        GFX_COL_ALPHA => &drawLineTrans,
+        else => &drawLineN,
     };
 
     var cpt1: u32 = @as(u32, @intCast(@as(u16, @bitCast(x1)))) << 16;
@@ -1385,8 +1386,8 @@ fn game_gfx_draw_polygon(game: *Game, color: u8, quad_strip: *const GameQuadStri
             return;
         }
         var h: u16 = undefined;
-        const step1 = calc_step(qs.vertices[j + 1], qs.vertices[j], &h);
-        const step2 = calc_step(qs.vertices[i - 1], qs.vertices[i], &h);
+        const step1 = calcStep(qs.vertices[j + 1], qs.vertices[j], &h);
+        const step2 = calcStep(qs.vertices[i - 1], qs.vertices[i], &h);
 
         i += 1;
         j -= 1;
@@ -1417,12 +1418,12 @@ fn game_gfx_draw_polygon(game: *Game, color: u8, quad_strip: *const GameQuadStri
     }
 }
 
-fn game_gfx_draw_quad_strip(game: *Game, buffer: u2, color: u8, qs: *const GameQuadStrip) void {
-    game_gfx_set_work_page_ptr(game, buffer);
-    game_gfx_draw_polygon(game, color, qs);
+fn gameGfxDrawQuadStrip(game: *Game, buffer: u2, color: u8, qs: *const GameQuadStrip) void {
+    gameGfxSetWorkPagePtr(game, buffer);
+    gameGfxDrawPolygon(game, color, qs);
 }
 
-fn game_res_read_entries(game: *Game) !void {
+fn gameResReadEntries(game: *Game) !void {
     switch (game.res.data_type) {
         .amiga, .atari => {
             assert(game.res.num_mem_list > 0);
@@ -1454,7 +1455,7 @@ fn game_res_read_entries(game: *Game) !void {
     }
 }
 
-fn game_res_invalidate(game: *Game) void {
+fn gameResInvalidate(game: *Game) void {
     for (&game.res.mem_list) |*me| {
         if (@intFromEnum(me.type) <= 2 or @intFromEnum(me.type) > 6) {
             me.*.status = .null;
@@ -1464,16 +1465,16 @@ fn game_res_invalidate(game: *Game) void {
     game.video.current_pal = 0xFF;
 }
 
-fn mix_i16(sample1: i32, sample2: i32) i16 {
+fn mixi16(sample1: i32, sample2: i32) i16 {
     const sample: i32 = sample1 + sample2;
     return @truncate(if (sample < -32768) -32768 else (if (sample > 32767) 32767 else sample));
 }
 
-fn to_raw_i16(a: i32) i16 {
+fn toRawi16(a: i32) i16 {
     return @truncate(((a << 8) | a) - 32768);
 }
 
-fn to_i16(a: i32) i16 {
+fn toi16(a: i32) i16 {
     if (a <= -128) {
         return -32768;
     }
@@ -1483,15 +1484,15 @@ fn to_i16(a: i32) i16 {
     return @intCast(@as(i16, @truncate(a)));
 }
 
-fn read_be_uint16(buf: []const u8) u16 {
+fn readBeU16(buf: []const u8) u16 {
     return std.mem.readInt(u16, buf[0..2], .big);
 }
 
-fn read_le_uint16(buf: []const u8) u32 {
+fn readLeU16(buf: []const u8) u32 {
     return std.mem.readInt(u16, buf[0..2], .little);
 }
 
-fn read_le_uint32(buf: []const u8) u32 {
+fn readLeU32(buf: []const u8) u32 {
     return std.mem.readInt(u32, buf[0..4], .little);
 }
 
@@ -1616,7 +1617,7 @@ fn gameAudioMixRaw(chan: *GameAudioChannel, sample: *i16) void {
                 return;
             }
         }
-        sample.* = mix_i16(sample.*, @divTrunc(to_raw_i16(data[pos] ^ 0x80) * chan.volume, 64));
+        sample.* = mixi16(sample.*, @divTrunc(toRawi16(data[pos] ^ 0x80) * chan.volume, 64));
     }
 }
 
@@ -1646,8 +1647,8 @@ fn gameAudioMixChannels(game: *Game, samples: []i16, count: i32) void {
 fn gameAudioSfxHandlePattern(game: *Game, channel: u8, data: []const u8) void {
     var player = &game.audio.sfx_player;
     var pat = std.mem.zeroes(GameAudioSfxPattern);
-    pat.note_1 = read_be_uint16(data);
-    pat.note_2 = read_be_uint16(data[2..]);
+    pat.note_1 = readBeU16(data);
+    pat.note_2 = readBeU16(data[2..]);
     if (pat.note_1 != 0xFFFD) {
         const sample: u16 = (pat.note_2 & 0xF000) >> 12;
         if (sample != 0) {
@@ -1657,8 +1658,8 @@ fn gameAudioSfxHandlePattern(game: *Game, channel: u8, data: []const u8) void {
                 pat.sample_volume = player.sfx_mod.samples[sample - 1].volume;
                 pat.sample_start = 8;
                 pat.sample_buffer = ptr;
-                pat.sample_len = read_be_uint16(ptr) *% 2;
-                const loopLen: u16 = read_be_uint16(ptr[2..]) *% 2;
+                pat.sample_len = readBeU16(ptr) *% 2;
+                const loopLen: u16 = readBeU16(ptr[2..]) *% 2;
                 if (loopLen != 0) {
                     pat.loop_pos = pat.sample_len;
                     pat.loop_len = loopLen;
@@ -1746,7 +1747,7 @@ fn gameAudioSfxMixChannel(s: *i16, ch: *GameAudioSfxChannel) void {
         }
     }
     var sample: i32 = ch.pos.interpolate(@as(i8, @bitCast(ch.sample_data[@intCast(pos1)])), @as(i8, @bitCast(ch.sample_data[@intCast(pos2)])));
-    sample = s.* +% to_i16(@divTrunc(sample * ch.volume, 64));
+    sample = s.* +% toi16(@divTrunc(sample * ch.volume, 64));
     s.* = (if (sample < -32768) -32768 else (if (sample > 32767) 32767 else @truncate(sample)));
 }
 
@@ -1817,40 +1818,40 @@ fn sndPlaySound(game: *Game, resNum: u16, frequency: u8, volume: u8, channel: u8
     }
 }
 
-fn fetch_byte(pc: *GamePc) u8 {
+fn fetchByte(pc: *GamePc) u8 {
     const res = pc.data[pc.pc];
     pc.pc += 1;
     return res;
 }
 
-fn fetch_word(pc: *GamePc) u16 {
+fn fetchWord(pc: *GamePc) u16 {
     const res = std.mem.readInt(u16, pc.data[pc.pc..][0..2], .big);
     pc.pc += 2;
     return res;
 }
 
-fn op_mov_const(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const n = fetch_word(&game.vm.ptr);
+fn opMovConst(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const n = fetchWord(&game.vm.ptr);
     std.log.debug("Script::op_movConst(0x{X}, {})", .{ i, n });
     game.vm.vars[i] = @bitCast(n);
 }
 
-fn op_mov(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const j = fetch_byte(&game.vm.ptr);
+fn opMov(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const j = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_mov(0x{X}, 0x{X})", .{ i, j });
     game.vm.vars[i] = game.vm.vars[j];
 }
 
-fn op_add(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const j = fetch_byte(&game.vm.ptr);
+fn opAdd(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const j = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_add(0x{X}, 0x{X})", .{ i, j });
     game.vm.vars[i] +%= game.vm.vars[j];
 }
 
-fn op_add_const(game: *Game) void {
+fn opAddConst(game: *Game) void {
     if (game.res.data_type == .dos or game.res.data_type == .amiga or game.res.data_type == .atari) {
         if (game.res.current_part == .luxe and game.vm.ptr.pc == 0x6D48) {
             std.log.warn("Script::op_addConst() workaround for infinite looping gun sound", .{});
@@ -1867,14 +1868,14 @@ fn op_add_const(game: *Game) void {
             sndPlaySound(game, 0x5B, 1, 64, 1);
         }
     }
-    const i = fetch_byte(&game.vm.ptr);
-    const n: i16 = @bitCast(fetch_word(&game.vm.ptr));
+    const i = fetchByte(&game.vm.ptr);
+    const n: i16 = @bitCast(fetchWord(&game.vm.ptr));
     std.log.debug("Script::op_addConst(0x{X}, {})", .{ i, n });
     game.vm.vars[i] += n;
 }
 
-fn op_call(game: *Game) void {
-    const off = fetch_word(&game.vm.ptr);
+fn opCall(game: *Game) void {
+    const off = fetchWord(&game.vm.ptr);
     std.log.debug("Script::op_call(0x{X})", .{off});
     if (game.vm.stack_ptr == 0x40) {
         std.log.err("Script::op_call() ec=0x8F stack overflow", .{});
@@ -1884,7 +1885,7 @@ fn op_call(game: *Game) void {
     game.vm.ptr.pc = off;
 }
 
-fn op_ret(game: *Game) void {
+fn opRet(game: *Game) void {
     std.log.debug("Script::op_ret()", .{});
     if (game.vm.stack_ptr == 0) {
         std.log.err("Script::op_ret() ec=0x8F stack underflow", .{});
@@ -1893,37 +1894,37 @@ fn op_ret(game: *Game) void {
     game.vm.ptr.pc = game.vm.stack_calls[game.vm.stack_ptr];
 }
 
-fn op_yield_task(game: *Game) void {
+fn opYieldTask(game: *Game) void {
     std.log.debug("Script::op_yieldTask()", .{});
     game.vm.paused = true;
 }
 
-fn op_jmp(game: *Game) void {
-    const off = fetch_word(&game.vm.ptr);
+fn opJmp(game: *Game) void {
+    const off = fetchWord(&game.vm.ptr);
     std.log.debug("Script::op_jmp(0x{X})", .{off});
     game.vm.ptr.pc = off;
 }
 
-fn op_install_task(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const n = fetch_word(&game.vm.ptr);
+fn opInstallTask(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const n = fetchWord(&game.vm.ptr);
     std.log.debug("Script::op_installTask(0x{X}, 0x{X})", .{ i, n });
     //GAME_ASSERT(i < GAME_NUM_TASKS);
     game.vm.tasks[i].next_pc = n;
 }
 
-fn op_jmp_if_var(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
+fn opJmpIfVar(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_jmpIfVar(0x{X})", .{i});
     game.vm.vars[i] -= 1;
     if (game.vm.vars[i] != 0) {
-        op_jmp(game);
+        opJmp(game);
     } else {
-        _ = fetch_word(&game.vm.ptr);
+        _ = fetchWord(&game.vm.ptr);
     }
 }
 
-fn fixup_palette_change_screen(game: *Game, part: GamePart, screen: i32) void {
+fn fixupPaletteChangeScreen(game: *Game, part: GamePart, screen: i32) void {
     var pal: ?u8 = null;
     switch (part) {
         .cite => if (screen == 0x47) { // bitmap resource #68
@@ -1936,21 +1937,21 @@ fn fixup_palette_change_screen(game: *Game, part: GamePart, screen: i32) void {
     }
     if (pal) |p| {
         std.log.debug("Setting palette {} for part {} screen {}", .{ p, part, screen });
-        game_video_change_pal(game, p);
+        gameVideoChangePal(game, p);
     }
 }
 
-fn op_cond_jmp(game: *Game) void {
-    const op = fetch_byte(&game.vm.ptr);
-    const variable = fetch_byte(&game.vm.ptr);
+fn opCondJmp(game: *Game) void {
+    const op = fetchByte(&game.vm.ptr);
+    const variable = fetchByte(&game.vm.ptr);
     const b = game.vm.vars[variable];
     var a: i16 = undefined;
     if ((op & 0x80) != 0) {
-        a = game.vm.vars[fetch_byte(&game.vm.ptr)];
+        a = game.vm.vars[fetchByte(&game.vm.ptr)];
     } else if ((op & 0x40) != 0) {
-        a = @bitCast(fetch_word(&game.vm.ptr));
+        a = @bitCast(fetchWord(&game.vm.ptr));
     } else {
-        a = @intCast(fetch_byte(&game.vm.ptr));
+        a = @intCast(fetchByte(&game.vm.ptr));
     }
     std.log.debug("Script::op_condJmp({}, 0x{X}, 0x{X}) var=0x{X}", .{ op, b, a, variable });
     var expr = false;
@@ -1986,18 +1987,18 @@ fn op_cond_jmp(game: *Game) void {
         else => std.log.warn("Script::op_condJmp() invalid condition {}", .{op & 7}),
     }
     if (expr) {
-        op_jmp(game);
+        opJmp(game);
         if (variable == GAME_VAR_SCREEN_NUM and game.vm.screen_num != game.vm.vars[GAME_VAR_SCREEN_NUM]) {
-            fixup_palette_change_screen(game, game.res.current_part, game.vm.vars[GAME_VAR_SCREEN_NUM]);
+            fixupPaletteChangeScreen(game, game.res.current_part, game.vm.vars[GAME_VAR_SCREEN_NUM]);
             game.vm.screen_num = game.vm.vars[GAME_VAR_SCREEN_NUM];
         }
     } else {
-        _ = fetch_word(&game.vm.ptr);
+        _ = fetchWord(&game.vm.ptr);
     }
 }
 
-fn op_set_palette(game: *Game) void {
-    const i = fetch_word(&game.vm.ptr);
+fn opSetPalette(game: *Game) void {
+    const i = fetchWord(&game.vm.ptr);
     std.log.debug("Script::op_changePalette({})", .{i});
     const num = i >> 8;
     if (game.gfx.fix_up_palette) {
@@ -2012,14 +2013,14 @@ fn op_set_palette(game: *Game) void {
     }
 }
 
-fn op_change_tasks_state(game: *Game) void {
-    const start = fetch_byte(&game.vm.ptr);
-    const end = fetch_byte(&game.vm.ptr);
+fn opChangeTasksState(game: *Game) void {
+    const start = fetchByte(&game.vm.ptr);
+    const end = fetchByte(&game.vm.ptr);
     if (end < start) {
         std.log.warn("Script::op_changeTasksState() ec=0x880 (end < start)", .{});
         return;
     }
-    const state = fetch_byte(&game.vm.ptr);
+    const state = fetchByte(&game.vm.ptr);
 
     std.log.debug("Script::op_changeTasksState({}, {}, {})", .{ start, end, state });
 
@@ -2034,27 +2035,27 @@ fn op_change_tasks_state(game: *Game) void {
     }
 }
 
-fn op_selectPage(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
+fn opSelectPage(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_selectPage({})", .{i});
-    game_video_set_work_page_ptr(game, i);
+    gameVideoSetWorkPagePtr(game, i);
 }
 
-fn op_fill_page(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const color = fetch_byte(&game.vm.ptr);
+fn opFillPage(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const color = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_fillPage({}, {})", .{ i, color });
-    game_video_fill_page(game, i, color);
+    gameVideoFillPage(game, i, color);
 }
 
-fn op_copy_page(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const j = fetch_byte(&game.vm.ptr);
+fn opCopyPage(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const j = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_copyPage({}, {})", .{ i, j });
-    game_video_copy_page(game, i, j, game.vm.vars[GAME_VAR_SCROLL_Y]);
+    gameVideoCopyPage(game, i, j, game.vm.vars[GAME_VAR_SCROLL_Y]);
 }
 
-fn inp_handle_special_keys(game: *Game) void {
+fn inpHandleSpecialKeys(game: *Game) void {
     if (game.input.pause) {
         if (game.res.current_part != .copy_protection and game.res.current_part != .intro) {
             game.input.pause = false;
@@ -2074,10 +2075,10 @@ fn inp_handle_special_keys(game: *Game) void {
     }
 }
 
-fn op_update_display(game: *Game) void {
-    const page = fetch_byte(&game.vm.ptr);
+fn opUpdateDisplay(game: *Game) void {
+    const page = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_updateDisplay({})", .{page});
-    inp_handle_special_keys(game);
+    inpHandleSpecialKeys(game);
 
     if (game.enable_protection) {
         // entered protection symbols match the expected values
@@ -2097,80 +2098,80 @@ fn op_update_display(game: *Game) void {
     game.vm.time_stamp = game.elapsed;
     game.vm.vars[0xF7] = 0;
 
-    game_video_update_display(game, page);
+    gameVideoUpdateDisplay(game, page);
 }
 
-fn op_remove_task(game: *Game) void {
+fn opRemoveTask(game: *Game) void {
     std.log.debug("Script::op_removeTask()", .{});
     game.vm.ptr.pc = 0xFFFF;
     game.vm.paused = true;
 }
 
-fn op_draw_string(game: *Game) void {
-    const strId = fetch_word(&game.vm.ptr);
-    const x: u16 = fetch_byte(&game.vm.ptr);
-    const y: u16 = fetch_byte(&game.vm.ptr);
-    const col: u16 = fetch_byte(&game.vm.ptr);
+fn opDrawString(game: *Game) void {
+    const strId = fetchWord(&game.vm.ptr);
+    const x: u16 = fetchByte(&game.vm.ptr);
+    const y: u16 = fetchByte(&game.vm.ptr);
+    const col: u16 = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_drawString(0x{X}, {}, {}, {})", .{ strId, x, y, col });
-    game_video_draw_string(game, @truncate(col), x, y, strId);
+    gameVideoDrawString(game, @truncate(col), x, y, strId);
 }
 
-fn op_sub(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const j = fetch_byte(&game.vm.ptr);
+fn opSub(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const j = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_sub(0x{X}, 0x{X})", .{ i, j });
     game.vm.vars[i] -= game.vm.vars[j];
 }
 
-fn op_and(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const n: u16 = fetch_word(&game.vm.ptr);
+fn opAnd(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const n: u16 = fetchWord(&game.vm.ptr);
     std.log.debug("Script::op_and(0x{X}, {})", .{ i, n });
     game.vm.vars[i] = @bitCast(@as(u16, @bitCast(game.vm.vars[i])) & n);
 }
 
-fn op_or(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const n = fetch_word(&game.vm.ptr);
+fn opOr(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const n = fetchWord(&game.vm.ptr);
     std.log.debug("Script::op_or(0x{X}, {})", .{ i, n });
     game.vm.vars[i] = @bitCast(@as(u16, @intCast(game.vm.vars[i])) | n);
 }
 
-fn op_shl(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const n: u4 = @intCast(fetch_word(&game.vm.ptr));
+fn opShl(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const n: u4 = @intCast(fetchWord(&game.vm.ptr));
     std.log.debug("Script::op_shl(0x{X}, {})", .{ i, n });
     game.vm.vars[i] = @bitCast(@as(u16, @intCast(game.vm.vars[i])) << n);
 }
 
-fn op_shr(game: *Game) void {
-    const i = fetch_byte(&game.vm.ptr);
-    const n: u4 = @intCast(fetch_word(&game.vm.ptr));
+fn opShr(game: *Game) void {
+    const i = fetchByte(&game.vm.ptr);
+    const n: u4 = @intCast(fetchWord(&game.vm.ptr));
     std.log.debug("Script::op_shr(0x{X}, {})", .{ i, n });
     game.vm.vars[i] = @bitCast(@as(u16, @intCast(game.vm.vars[i])) >> n);
 }
 
-fn op_play_sound(game: *Game) void {
-    const res_num = fetch_word(&game.vm.ptr);
-    const freq = fetch_byte(&game.vm.ptr);
-    const vol = fetch_byte(&game.vm.ptr);
-    const channel = fetch_byte(&game.vm.ptr);
+fn opPlaySound(game: *Game) void {
+    const res_num = fetchWord(&game.vm.ptr);
+    const freq = fetchByte(&game.vm.ptr);
+    const vol = fetchByte(&game.vm.ptr);
+    const channel = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_playSound(0x{X}, {}, {}, {})", .{ res_num, freq, vol, channel });
     sndPlaySound(game, res_num, freq, vol, channel);
 }
 
-fn op_update_resources(game: *Game) void {
-    const num = fetch_word(&game.vm.ptr);
+fn opUpdateResources(game: *Game) void {
+    const num = fetchWord(&game.vm.ptr);
     std.log.debug("Script::op_updateResources({})", .{num});
     if (num == 0) {
         gameAudioStopAll(game);
-        game_res_invalidate(game);
+        gameResInvalidate(game);
     } else {
-        game_res_update(game, num);
+        gameResUpdate(game, num);
     }
 }
 
-fn snd_play_music(game: *Game, resNum: u16, delay: u16, pos: u8) void {
+fn sndPlayMusic(game: *Game, resNum: u16, delay: u16, pos: u8) void {
     std.log.debug("snd_playMusic(0x{X}, {}, {})", .{ resNum, delay, pos });
     // DT_AMIGA, DT_ATARI, DT_DOS
     if (resNum != 0) {
@@ -2184,48 +2185,48 @@ fn snd_play_music(game: *Game, resNum: u16, delay: u16, pos: u8) void {
     }
 }
 
-fn op_play_music(game: *Game) void {
-    const res_num = fetch_word(&game.vm.ptr);
-    const delay = fetch_word(&game.vm.ptr);
-    const pos = fetch_byte(&game.vm.ptr);
+fn opPlayMusic(game: *Game) void {
+    const res_num = fetchWord(&game.vm.ptr);
+    const delay = fetchWord(&game.vm.ptr);
+    const pos = fetchByte(&game.vm.ptr);
     std.log.debug("Script::op_playMusic(0x{X}, {}, {})", .{ res_num, delay, pos });
-    snd_play_music(game, res_num, delay, pos);
+    sndPlayMusic(game, res_num, delay, pos);
 }
 
 const OpFunc = *const fn (*Game) void;
 const op_table = [_]OpFunc{
     // 0x00
-    &op_mov_const,
-    &op_mov,
-    &op_add,
-    &op_add_const,
+    &opMovConst,
+    &opMov,
+    &opAdd,
+    &opAddConst,
     // 0x04
-    &op_call,
-    &op_ret,
-    &op_yield_task,
-    &op_jmp,
+    &opCall,
+    &opRet,
+    &opYieldTask,
+    &opJmp,
     // 0x08
-    &op_install_task,
-    &op_jmp_if_var,
-    &op_cond_jmp,
-    &op_set_palette,
+    &opInstallTask,
+    &opJmpIfVar,
+    &opCondJmp,
+    &opSetPalette,
     // 0x0C
-    &op_change_tasks_state,
-    &op_selectPage,
-    &op_fill_page,
-    &op_copy_page,
+    &opChangeTasksState,
+    &opSelectPage,
+    &opFillPage,
+    &opCopyPage,
     // 0x10
-    &op_update_display,
-    &op_remove_task,
-    &op_draw_string,
-    &op_sub,
+    &opUpdateDisplay,
+    &opRemoveTask,
+    &opDrawString,
+    &opSub,
     // 0x14
-    &op_and,
-    &op_or,
-    &op_shl,
-    &op_shr,
+    &opAnd,
+    &opOr,
+    &opShl,
+    &opShr,
     // 0x18
-    &op_play_sound,
-    &op_update_resources,
-    &op_play_music,
+    &opPlaySound,
+    &opUpdateResources,
+    &opPlayMusic,
 };
