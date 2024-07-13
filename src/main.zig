@@ -92,17 +92,6 @@ export fn frame() void {
         ig.igPopID();
     }
     ig.igNewLine();
-
-    // var buf: [3 * raw.GAME_WIDTH]u8 = undefined;
-    // for (0..raw.GAME_HEIGHT) |y| {
-    //     var i: usize = 0;
-    //     for (0..raw.GAME_WIDTH) |x| {
-    //         const b = state.game.gfx.fb[y * raw.GAME_WIDTH + x];
-    //         _ = std.fmt.bufPrint(buf[i .. i + 3], "{X:0>2} ", .{b}) catch @panic("fb failed to print");
-    //         i += 3;
-    //     }
-    //     ig.igText(buf[0..]);
-    // }
     ig.igEnd();
     //=== UI CODE ENDS HERE
 
@@ -110,7 +99,6 @@ export fn frame() void {
     time.emuStart();
     raw.gameExec(&state.game, state.frame_time_us / 1000) catch @panic("gameexec failed");
     prof.pushMicroSeconds(.EMU, time.emuEnd());
-    // simgui.render();
 
     gfx.draw(.{
         .display = raw.displayInfo(&state.game),
@@ -131,6 +119,34 @@ export fn cleanup() void {
 export fn event(ev: [*c]const sapp.Event) void {
     // forward input events to sokol-imgui
     _ = simgui.handleEvent(ev.*);
+    switch (ev.*.type) {
+        .CHAR => {
+            const c = ev.*.char_code;
+            if ((c > 0x20) and (c < 0x7F)) {
+                raw.gameCharPressed(&state.game, @truncate(c));
+            }
+        },
+        .KEY_DOWN, .KEY_UP => {
+            const input: ?raw.GameInput = switch (ev.*.key_code) {
+                .LEFT => .left,
+                .RIGHT => .right,
+                .DOWN => .down,
+                .UP => .up,
+                .ENTER => .action,
+                .SPACE => .action,
+                .ESCAPE => .back,
+                .F => .back,
+                .C => .code,
+                .P => .pause,
+                else => null,
+            };
+            if (input) |key| {
+                const gameKeyFunc = if (ev.*.type == .KEY_DOWN) &raw.gameKeyDown else &raw.gameKeyUp;
+                gameKeyFunc(&state.game, key);
+            }
+        },
+        else => {},
+    }
 }
 
 pub fn main() void {

@@ -117,7 +117,7 @@ const GameGfxFormat = enum(u2) {
     rgba,
 };
 
-const GameInput = enum {
+pub const GameInput = enum {
     left,
     right,
     up,
@@ -1729,7 +1729,7 @@ fn gameAudioSfxHandlePattern(game: *Game, channel: u8, data: []const u8) void {
     } else if (pat.note_1 != 0 and pat.sample_buffer != null) {
         //GAME_ASSERT(pat.note_1 >= 0x37 and pat.note_1 < 0x1000);
         // convert Amiga period value to hz
-        const freq: i32 = @divTrunc(GAME_PAULA_FREQ, (pat.note_1 * 2));
+        const freq: i32 = @divTrunc(GAME_PAULA_FREQ, (pat.note_1 *% 2));
         std.log.debug("SfxPlayer::handlePattern() adding sample freq = 0x{X}", .{freq});
         var ch = &player.channels[channel];
         ch.sample_data = pat.sample_buffer.?[pat.sample_start..];
@@ -1828,6 +1828,39 @@ fn gameAudioUpdate(game: *Game, num_samples: i32) void {
     if (game.audio.callback) |cb| {
         cb(&game.audio.sample_buffer);
     }
+}
+
+pub fn gameKeyDown(game: *Game, input: GameInput) void {
+    //assert(game && game->valid);
+    switch (input) {
+        .left => game.input.dir_mask.left = true,
+        .right => game.input.dir_mask.right = true,
+        .up => game.input.dir_mask.up = true,
+        .down => game.input.dir_mask.down = true,
+        .action => game.input.action = true,
+        .back => game.input.back = true,
+        .code => game.input.code = true,
+        .pause => game.input.pause = true,
+    }
+}
+
+pub fn gameKeyUp(game: *Game, input: GameInput) void {
+    // assert(game && game->valid);
+    switch (input) {
+        .left => game.input.dir_mask.left = false,
+        .right => game.input.dir_mask.right = false,
+        .up => game.input.dir_mask.up = false,
+        .down => game.input.dir_mask.down = false,
+        .action => game.input.action = false,
+        .back => game.input.back = false,
+        .code => game.input.code = false,
+        .pause => game.input.pause = false,
+    }
+}
+
+pub fn gameCharPressed(game: *Game, c: u8) void {
+    // GAME_ASSERT(game && game->valid);
+    game.input.last_char = c;
 }
 
 fn sndPlaySound(game: *Game, resNum: u16, frequency: u8, volume: u8, channel: u8) void {
