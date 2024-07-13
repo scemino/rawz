@@ -28,11 +28,6 @@ const GAME_MAX_AUDIO_SAMPLES = 2048 * 16; // max number of audio samples in inte
 
 const GFX_COL_ALPHA = 0x10; // transparent pixel (OR'ed with 0x8)
 const GFX_COL_PAGE = 0x11; // buffer 0 pixel
-const GFX_COL_BMP = 0xFF; // bitmap in buffer 0 pixel
-const GFX_FMT_CLUT = 0;
-const GFX_FMT_RGB555 = 1;
-const GFX_FMT_RGB = 2;
-const GFX_FMT_RGBA = 3;
 
 const GAME_INACTIVE_TASK = 0xFFFF;
 
@@ -71,25 +66,9 @@ const mem_list_parts = [_][4]u8{
 
 const period_table = [_]u16{ 1076, 1016, 960, 906, 856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453, 428, 404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226, 214, 202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113 };
 
-const GfxDim = struct { width: i32, height: i32 };
-
-const GfxRect = struct { x: i32, y: i32, width: i32, height: i32 };
-
-const GfxDisplayInfo = struct {
-    const GfxDisplayInfoFrame = struct {
-        dim: GfxDim, // framebuffer dimensions in pixels
-        buffer: []u8,
-        bytes_per_pixel: usize, // 1 or 4
-    };
-    frame: GfxDisplayInfoFrame,
-    screen: GfxRect,
-    palette: []u8,
-    portrait: bool,
-};
-
 const GameMemEntry = struct {
     status: GameResStatus, // 0x0
-    type: GameResType, // 0x1, Resource::ResType
+    type: GameResType, // 0x1
     buf_ptr: []u8, // 0x2
     rank_num: u8, // 0x6
     bank_num: u8, // 0x7
@@ -291,10 +270,10 @@ const GameDesc = struct {
     data: GameData,
 };
 
-const GamePoint = struct { x: i16, y: i16 };
+const GamePoint = struct { x: i16 = 0, y: i16 = 0 };
 
 const GameQuadStrip = struct {
-    num_vertices: u8,
+    num_vertices: u8 = 0,
     vertices: [GAME_QUAD_STRIP_MAX_VERTICES]GamePoint,
 };
 
@@ -1022,7 +1001,6 @@ fn gameVideoScaleBitmap(game: *Game, src: []const u8, fmt: GameGfxFormat) void {
 }
 
 fn gameVideoCopyBitmapPtr(game: *Game, src: []const u8) void {
-    // _ = game;
     if (game.res.data_type == .dos or game.res.data_type == .amiga) {
         var temp_bitmap: [GAME_WIDTH * GAME_HEIGHT]u8 = undefined;
         decodeAmiga(src, &temp_bitmap);
@@ -1197,7 +1175,7 @@ fn gameVideoFillPolygon(game: *Game, color: u16, zoom: u16, pt: GamePoint) void 
     const y1: i16 = @intCast(pt.y - @as(i16, @intCast(bbh / 2)));
     const y2: i16 = @intCast(pt.y + @as(i16, @intCast(bbh / 2)));
 
-    if (x1 > 319 or x2 < 0 or y1 > 199 or y2 < 0)
+    if (x1 >= GAME_WIDTH or x2 < 0 or y1 >= GAME_HEIGHT or y2 < 0)
         return;
 
     var qs: GameQuadStrip = undefined;
@@ -1207,7 +1185,7 @@ fn gameVideoFillPolygon(game: *Game, color: u16, zoom: u16, pt: GamePoint) void 
         std.log.warn("Unexpected number of vertices {}", .{qs.num_vertices});
         return;
     }
-    //GAME_ASSERT(qs.num_vertices < GAME_QUAD_STRIP_MAX_VERTICES);
+    assert(qs.num_vertices < GAME_QUAD_STRIP_MAX_VERTICES);
 
     for (0..qs.num_vertices) |i| {
         qs.vertices[i] = .{
@@ -1391,9 +1369,7 @@ fn gameGfxDrawBitmap(game: *Game, page: u2, data: []const u8, w: u16, h: u16, fm
     unreachable;
 }
 
-fn gameGfxDrawPolygon(game: *Game, color: u8, quad_strip: *const GameQuadStrip) void {
-    const qs = quad_strip;
-
+fn gameGfxDrawPolygon(game: *Game, color: u8, qs: *const GameQuadStrip) void {
     var i: usize = 0;
     var j: usize = qs.num_vertices - 1;
 
