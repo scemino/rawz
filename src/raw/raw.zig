@@ -1,6 +1,6 @@
 const std = @import("std");
 const audio = @import("sokol").audio;
-const glue = @import("glue.zig");
+const glue = @import("../common/glue.zig");
 const DemoJoy = @import("DemoJoy.zig");
 const Strings = @import("Strings.zig");
 const GameFrac = @import("GameFrac.zig");
