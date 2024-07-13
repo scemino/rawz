@@ -1123,7 +1123,7 @@ fn gameVideoDrawShapeParts(game: *Game, zoom: u16, pgc: GamePoint) void {
     };
     const n: usize = @intCast(fetchByte(&game.video.p_data));
     std.log.debug("Video::drawShapeParts n={}", .{n});
-    for (0..n) |_| {
+    for (0..n + 1) |_| {
         var offset = fetchWord(&game.video.p_data);
         const po = GamePoint{
             .x = @intCast(@as(i32, @intCast(pt.x)) + @divTrunc(@as(i32, @intCast(fetchByte(&game.video.p_data))) * zoom, 64)),
