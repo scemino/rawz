@@ -367,6 +367,11 @@ pub const Game = struct {
     title: [:0]const u8, // title of the game
 };
 
+const video_log = std.log.scoped(.video);
+const vm_log = std.log.scoped(.vm);
+const snd_log = std.log.scoped(.sound);
+const bank_log = std.log.scoped(.bank);
+
 pub fn displayInfo(game: ?*Game) glue.DisplayInfo {
     return .{
         .fb = .{
@@ -403,7 +408,6 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
         game.input.demo_joy.read(demo);
     }
 
-    // g_debugMask = GAME_DBG_INFO | GAME_DBG_VIDEO | GAME_DBG_SND | GAME_DBG_SCRIPT | GAME_DBG_BANK;
     gameResDetectVersion(game);
     gameVideoInit(game);
     game.res.has_password_screen = true;
@@ -549,7 +553,7 @@ fn gameVmExecuteTask(game: *Game) !void {
             pt.y = 199;
             pt.x += h;
         }
-        std.log.debug("vid_opcd_0x80 : opcode=0x{X} off=0x{X} x={} y={}", .{ opcode, off, pt.x, pt.y });
+        video_log.debug("vid_opcd_0x80 : opcode=0x{X} off=0x{X} x={} y={}", .{ opcode, off, pt.x, pt.y });
         gameVideoSetDataBuffer(game, game.res.seg_video1, off);
         gameVideoDrawShape(game, 0xFF, 64, pt);
     } else if ((opcode & 0x40) == 0x40) {
@@ -589,7 +593,7 @@ fn gameVmExecuteTask(game: *Game) !void {
                 zoom = fetchByte(&game.vm.ptr);
             }
         }
-        std.log.debug("vid_opcd_0x40 : off=0x{X} x={} y={}", .{ off, pt.x, pt.y });
+        video_log.debug("vid_opcd_0x40 : off=0x{X} x={} y={}", .{ off, pt.x, pt.y });
         gameVideoSetDataBuffer(game, if (game.res.use_seg_video2) game.res.seg_video2 else game.res.seg_video1, off);
         gameVideoDrawShape(game, 0xFF, zoom, pt);
     } else if (opcode > 0x1A) {
@@ -608,10 +612,10 @@ fn gameVmRun(game: *Game) !bool {
             // execute 1 step of 1 task
             game.vm.ptr = .{ .data = game.res.seg_code, .pc = n };
             game.vm.paused = false;
-            // std.log.debug("Script::runTasks() i=0x{X} n=0x{X}", .{ i, n });
+            vm_log.debug("Script::runTasks() i=0x{X} n=0x{X}", .{ i, n });
             try gameVmExecuteTask(game);
             game.vm.tasks[i].pc = game.vm.ptr.pc;
-            // std.log.debug("Script::runTasks() i=0x{X} pos=0x{X}", .{ i, game.vm.tasks[i].pc });
+            vm_log.debug("Script::runTasks() i=0x{X} pos=0x{X}", .{ i, game.vm.tasks[i].pc });
             if (!game.vm.paused and game.vm.tasks[i].pc != GAME_INACTIVE_TASK) {
                 return false;
             }
@@ -763,7 +767,7 @@ fn gameResLoad(game: *Game) void {
                 std.log.warn("Resource::load() ec=0xF00 (me.bankNum == 0)", .{});
                 me.status = .null;
             } else {
-                std.log.debug("Resource::load() bufPos=0x{X} size={} type={} pos=0x{X} bankNum={}", .{ game.res.mem.len - mem_ptr.len, me.packed_size, me.type, me.bank_pos, me.bank_num });
+                bank_log.debug("Resource::load() bufPos=0x{X} size={} type={} pos=0x{X} bankNum={}", .{ game.res.mem.len - mem_ptr.len, me.packed_size, me.type, me.bank_pos, me.bank_num });
                 if (gameResReadBank(game, me, mem_ptr)) {
                     if (me.type == .bitmap) {
                         gameVideoCopyBitmapPtr(game, game.res.mem[game.res.vid_cur..]);
@@ -826,15 +830,15 @@ fn gameResDetectVersion(game: *Game) void {
     if (game.res.data.mem_list) |_| {
         // only DOS game has a memlist.bin file
         game.res.data_type = .dos;
-        std.log.debug("Using DOS data files", .{});
+        std.log.info("Using DOS data files", .{});
     } else {
         const detection = detectAmigaAtari(game.res.data.banks.bank01.len);
         if (detection) |detected| {
             game.res.data_type = detected.data_type;
             if (detected.data_type == .atari) {
-                std.log.debug("Using Atari data files", .{});
+                std.log.info("Using Atari data files", .{});
             } else {
-                std.log.debug("Using Amiga data files", .{});
+                std.log.info("Using Amiga data files", .{});
             }
             game.res.num_mem_list = GAME_ENTRIES_COUNT;
             for (0..GAME_ENTRIES_COUNT) |i| {
@@ -885,7 +889,7 @@ fn gameVideoGetPagePtr(game: *Game, page: u8) u2 {
 }
 
 fn gameVideoSetWorkPagePtr(game: *Game, page: u8) void {
-    std.log.debug("Video::setWorkPagePtr({})", .{page});
+    video_log.debug("Video::setWorkPagePtr({})", .{page});
     game.video.buffers[0] = gameVideoGetPagePtr(game, page);
 }
 
@@ -1097,13 +1101,13 @@ fn gameVideoChangePal(game: *Game, pal_num: u8) void {
 }
 
 fn gameVideoFillPage(game: *Game, page: u8, color: u8) void {
-    std.log.debug("Video::fillPage({}, {})", .{ page, color });
+    video_log.debug("Video::fillPage({}, {})", .{ page, color });
     gameGfxClearBuffer(game, gameVideoGetPagePtr(game, page), color);
 }
 
 fn gameVideoCopyPage(game: *Game, s: u8, dst: u8, vscroll: i16) void {
     var src = s;
-    std.log.debug("Video::copyPage({}, {})", .{ src, dst });
+    video_log.debug("Video::copyPage({}, {})", .{ src, dst });
     if (src < 0xFE) {
         src = src & 0xBF; //~0x40
     }
@@ -1129,7 +1133,7 @@ fn gameVideoDrawShapeParts(game: *Game, zoom: u16, pgc: GamePoint) void {
         .y = pgc.y - @as(i16, @intCast(fetchByte(&game.video.p_data) * zoom / 64)),
     };
     const n: usize = @intCast(fetchByte(&game.video.p_data));
-    std.log.debug("Video::drawShapeParts n={}", .{n});
+    video_log.debug("Video::drawShapeParts n={}", .{n});
     for (0..n + 1) |_| {
         var offset = fetchWord(&game.video.p_data);
         const po = GamePoint{
@@ -1216,7 +1220,7 @@ fn swap(x: anytype, y: anytype) void {
 }
 
 fn gameVideoUpdateDisplay(game: *Game, page: u8) void {
-    std.log.debug("Video::updateDisplay({})", .{page});
+    video_log.debug("Video::updateDisplay({})", .{page});
     if (page != 0xFE) {
         if (page == 0xFF) {
             swap(&game.video.buffers[1], &game.video.buffers[2]);
@@ -1237,7 +1241,7 @@ fn gameVideoDrawString(game: *Game, color: u8, xx: u16, yy: u16, strId: u16) voi
     const escapedChars = false;
     const str = game.strings_table.find(strId);
 
-    std.log.debug("drawString({}, {}, {}, '{s}')", .{ color, x, y, str });
+    video_log.debug("drawString({}, {}, {}, '{s}')", .{ color, x, y, str });
     const len = str.len;
     for (0..len) |i| {
         if (str[i] == '\n' or str[i] == '\r') {
@@ -1335,7 +1339,6 @@ fn gameGfxDrawPointPage(game: *Game, page: u2, color: u8, pt: GamePoint) void {
 fn calcStep(p1: GamePoint, p2: GamePoint, dy: *u16) u32 {
     dy.* = @intCast(p2.y - p1.y);
     const delta: u16 = if (dy.* <= 1) 1 else dy.*;
-    // TODO: check this
     return @bitCast(@as(i32, @intCast(p2.x - p1.x)) * @as(i32, @intCast(0x4000 / delta)) << 2);
 }
 
@@ -1522,17 +1525,17 @@ fn gameAudioInit(game: *Game, callback: GameAudioCallback) void {
 }
 
 fn gameAudioSfxStart(game: *Game) void {
-    std.log.debug("SfxPlayer::start()", .{});
+    snd_log.debug("SfxPlayer::start()", .{});
     game.audio.sfx_player.sfx_mod.cur_pos = 0;
 }
 
 fn gameAudioSfxSetEventsDelay(game: *Game, delay: u16) void {
-    std.log.debug("SfxPlayer::setEventsDelay({})", .{delay});
+    snd_log.debug("SfxPlayer::setEventsDelay({})", .{delay});
     game.audio.sfx_player.delay = delay;
 }
 
 fn gameAudioStopSound(game: *Game, channel: u2) void {
-    std.log.debug("Mixer::stopChannel({})", .{channel});
+    snd_log.debug("Mixer::stopChannel({})", .{channel});
     game.audio.channels[channel].data = null;
 }
 
@@ -1567,9 +1570,9 @@ fn gameAudioSfxPrepareInstruments(game: *Game, buf: []const u8) void {
             const me = &game.res.mem_list[res_num];
             if (me.status == .loaded and me.type == .sound) {
                 ins.data = me.buf_ptr;
-                std.log.debug("Loaded instrument 0x{X} n={} volume={}", .{ res_num, i, ins.volume });
+                snd_log.debug("Loaded instrument 0x{X} n={} volume={}", .{ res_num, i, ins.volume });
             } else {
-                std.log.err("Error loading instrument 0x{X:0>2}", .{res_num});
+                snd_log.err("Error loading instrument 0x{X:0>2}", .{res_num});
             }
         }
         p = p[2..]; // skip volume
@@ -1577,14 +1580,14 @@ fn gameAudioSfxPrepareInstruments(game: *Game, buf: []const u8) void {
 }
 
 fn gameAudioSfxLoadModule(game: *Game, res_num: u16, delay: u16, pos: u8) void {
-    std.log.debug("SfxPlayer::loadSfxModule(0x{X:0>2}, {}, {})", .{ res_num, delay, pos });
+    snd_log.debug("SfxPlayer::loadSfxModule(0x{X:0>2}, {}, {})", .{ res_num, delay, pos });
     var player = &game.audio.sfx_player;
     var me = &game.res.mem_list[res_num];
     if (me.status == .loaded and me.type == .music) {
         player.sfx_mod = std.mem.zeroes(@TypeOf(player.sfx_mod));
         player.sfx_mod.cur_order = pos;
         player.sfx_mod.num_order = me.buf_ptr[0x3F];
-        std.log.debug("SfxPlayer::loadSfxModule() curOrder = 0x{X} numOrder = 0x{X}", .{ player.sfx_mod.cur_order, player.sfx_mod.num_order });
+        snd_log.debug("SfxPlayer::loadSfxModule() curOrder = 0x{X} numOrder = 0x{X}", .{ player.sfx_mod.cur_order, player.sfx_mod.num_order });
         player.sfx_mod.order_table = me.buf_ptr[0x40..];
         if (delay == 0) {
             player.delay = readBeU16(me.buf_ptr);
@@ -1592,10 +1595,10 @@ fn gameAudioSfxLoadModule(game: *Game, res_num: u16, delay: u16, pos: u8) void {
             player.delay = delay;
         }
         player.sfx_mod.data = me.buf_ptr[0xC0..];
-        std.log.debug("SfxPlayer::loadSfxModule() eventDelay = {} ms", .{player.delay});
+        snd_log.debug("SfxPlayer::loadSfxModule() eventDelay = {} ms", .{player.delay});
         gameAudioSfxPrepareInstruments(game, me.buf_ptr[2..]);
     } else {
-        std.log.warn("SfxPlayer::loadSfxModule() ec=0xF8", .{});
+        snd_log.warn("SfxPlayer::loadSfxModule() ec=0xF8", .{});
     }
 }
 
@@ -1609,7 +1612,7 @@ fn gameAudioPlaySoundRaw(game: *Game, channel: u2, data: []const u8, freq: i32, 
 }
 
 fn gameAudioStopSfxMusic(game: *Game) void {
-    std.log.debug("SfxPlayer::stop()", .{});
+    snd_log.debug("SfxPlayer::stop()", .{});
     game.audio.sfx_player.playing = false;
 }
 
@@ -1671,7 +1674,7 @@ fn gameAudioSfxHandlePattern(game: *Game, channel: u2, data: []const u8) void {
         if (sample != 0) {
             const ptr = player.sfx_mod.samples[sample - 1].data;
             if (ptr.len > 0) {
-                std.log.debug("SfxPlayer::handlePattern() preparing sample {}", .{sample});
+                snd_log.debug("SfxPlayer::handlePattern() preparing sample {}", .{sample});
                 pat.sample_volume = player.sfx_mod.samples[sample - 1].volume;
                 pat.sample_start = 8;
                 pat.sample_buffer = ptr;
@@ -1707,7 +1710,7 @@ fn gameAudioSfxHandlePattern(game: *Game, channel: u2, data: []const u8) void {
         }
     }
     if (pat.note_1 == 0xFFFD) {
-        std.log.debug("SfxPlayer::handlePattern() _syncVar = 0x{X}", .{pat.note_2});
+        snd_log.debug("SfxPlayer::handlePattern() _syncVar = 0x{X}", .{pat.note_2});
         game.vm.vars[GAME_VAR_MUSIC_SYNC] = @bitCast(pat.note_2);
     } else if (pat.note_1 != 0) {
         pat.period_arpeggio = pat.note_1;
@@ -1717,7 +1720,7 @@ fn gameAudioSfxHandlePattern(game: *Game, channel: u2, data: []const u8) void {
             assert(pat.note_1 >= 0x37 and pat.note_1 < 0x1000);
             // convert Amiga period value to hz
             const freq: i32 = @divTrunc(GAME_PAULA_FREQ, @as(i32, @intCast(pat.note_1)) * 2);
-            std.log.debug("SfxPlayer::handlePattern() adding sample freq = 0x{X}", .{freq});
+            snd_log.debug("SfxPlayer::handlePattern() adding sample freq = 0x{X}", .{freq});
             var ch = &player.channels[channel];
             ch.sample_data = buf[pat.sample_start..];
             ch.sample_len = pat.sample_len;
@@ -1739,7 +1742,7 @@ fn gameAudioSfxHandleEvents(game: *Game) void {
         pattern_data = pattern_data[4..];
     }
     player.sfx_mod.cur_pos += 4 * 4;
-    std.log.debug("SfxPlayer::handleEvents() order = 0x{X} curPos = 0x{X}", .{ order, player.sfx_mod.cur_pos });
+    snd_log.debug("SfxPlayer::handleEvents() order = 0x{X} curPos = 0x{X}", .{ order, player.sfx_mod.cur_pos });
     if (player.sfx_mod.cur_pos >= 1024) {
         player.sfx_mod.cur_pos = 0;
         order = player.sfx_mod.cur_order + 1;
@@ -1859,7 +1862,7 @@ fn sndPlaySound(game: *Game, resNum: u16, frequency: u8, volume: u8, channel: u2
     var vol = volume;
     var freq = frequency;
     var chan = channel;
-    std.log.debug("snd_playSound(0x{X}, {}, {}, {})", .{ resNum, freq, vol, chan });
+    snd_log.debug("snd_playSound(0x{X}, {}, {}, {})", .{ resNum, freq, vol, chan });
     if (vol == 0) {
         gameAudioStopSound(game, chan);
         return;
@@ -1892,27 +1895,27 @@ fn fetchWord(pc: *GamePc) u16 {
 fn opMovConst(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const n: i16 = @bitCast(fetchWord(&game.vm.ptr));
-    std.log.debug("Script::op_movConst(0x{X}, {})", .{ i, n });
+    vm_log.debug("Script::op_movConst(0x{X}, {})", .{ i, n });
     game.vm.vars[i] = n;
 }
 
 fn opMov(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const j = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_mov(0x{X:0>2}, 0x{X:0>2})", .{ i, j });
+    vm_log.debug("Script::op_mov(0x{X:0>2}, 0x{X:0>2})", .{ i, j });
     game.vm.vars[i] = game.vm.vars[j];
 }
 
 fn opAdd(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const j = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_add(0x{X:0>2}, 0x{X:0>2})", .{ i, j });
+    vm_log.debug("Script::op_add(0x{X:0>2}, 0x{X:0>2})", .{ i, j });
     game.vm.vars[i] +%= game.vm.vars[j];
 }
 
 fn opAddConst(game: *Game) void {
     if (game.res.current_part == .luxe and game.vm.ptr.pc == 0x6D48) {
-        std.log.warn("Script::op_addConst() workaround for infinite looping gun sound", .{});
+        vm_log.warn("Script::op_addConst() workaround for infinite looping gun sound", .{});
         // The script 0x27 slot 0x17 doesn't stop the gun sound from looping.
         // This is a bug in the original game code, confirmed by Eric Chahi and
         // addressed with the anniversary editions.
@@ -1927,15 +1930,15 @@ fn opAddConst(game: *Game) void {
     }
     const i = fetchByte(&game.vm.ptr);
     const n: i16 = @bitCast(fetchWord(&game.vm.ptr));
-    std.log.debug("Script::op_addConst(0x{X}, {})", .{ i, n });
+    vm_log.debug("Script::op_addConst(0x{X}, {})", .{ i, n });
     game.vm.vars[i] += n;
 }
 
 fn opCall(game: *Game) void {
     const off = fetchWord(&game.vm.ptr);
-    std.log.debug("Script::op_call(0x{X})", .{off});
+    vm_log.debug("Script::op_call(0x{X})", .{off});
     if (game.vm.stack_ptr == 0x40) {
-        std.log.err("Script::op_call() ec=0x8F stack overflow", .{});
+        vm_log.err("Script::op_call() ec=0x8F stack overflow", .{});
     }
     game.vm.stack_calls[game.vm.stack_ptr] = game.vm.ptr.pc;
     game.vm.stack_ptr += 1;
@@ -1943,35 +1946,35 @@ fn opCall(game: *Game) void {
 }
 
 fn opRet(game: *Game) void {
-    std.log.debug("Script::op_ret()", .{});
+    vm_log.debug("Script::op_ret()", .{});
     if (game.vm.stack_ptr == 0) {
-        std.log.err("Script::op_ret() ec=0x8F stack underflow", .{});
+        vm_log.err("Script::op_ret() ec=0x8F stack underflow", .{});
     }
     game.vm.stack_ptr -= 1;
     game.vm.ptr.pc = game.vm.stack_calls[game.vm.stack_ptr];
 }
 
 fn opYieldTask(game: *Game) void {
-    std.log.debug("Script::op_yieldTask()", .{});
+    vm_log.debug("Script::op_yieldTask()", .{});
     game.vm.paused = true;
 }
 
 fn opJmp(game: *Game) void {
     const off = fetchWord(&game.vm.ptr);
-    std.log.debug("Script::op_jmp(0x{X})", .{off});
+    vm_log.debug("Script::op_jmp(0x{X})", .{off});
     game.vm.ptr.pc = off;
 }
 
 fn opInstallTask(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const n = fetchWord(&game.vm.ptr);
-    std.log.debug("Script::op_installTask(0x{X}, 0x{X})", .{ i, n });
+    vm_log.debug("Script::op_installTask(0x{X}, 0x{X})", .{ i, n });
     game.vm.tasks[i].next_pc = n;
 }
 
 fn opJmpIfVar(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_jmpIfVar(0x{X})", .{i});
+    vm_log.debug("Script::op_jmpIfVar(0x{X})", .{i});
     game.vm.vars[i] -= 1;
     if (game.vm.vars[i] != 0) {
         opJmp(game);
@@ -1992,7 +1995,7 @@ fn fixupPaletteChangeScreen(game: *Game, part: GamePart, screen: i32) void {
         else => {},
     }
     if (pal) |p| {
-        std.log.debug("Setting palette {} for part {} screen {}", .{ p, part, screen });
+        vm_log.debug("Setting palette {} for part {} screen {}", .{ p, part, screen });
         gameVideoChangePal(game, p);
     }
 }
@@ -2009,7 +2012,7 @@ fn opCondJmp(game: *Game) void {
     } else {
         a = @intCast(fetchByte(&game.vm.ptr));
     }
-    std.log.debug("Script::op_condJmp({}, 0x{X:0>2}, 0x{X:0>2}) var=0x{X:0>2}", .{ op, @as(u16, @bitCast(b)), @as(u16, @bitCast(a)), variable });
+    vm_log.debug("Script::op_condJmp({}, 0x{X:0>2}, 0x{X:0>2}) var=0x{X:0>2}", .{ op, @as(u16, @bitCast(b)), @as(u16, @bitCast(a)), variable });
     var expr = false;
     switch (op & 7) {
         0 => {
@@ -2029,7 +2032,7 @@ fn opCondJmp(game: *Game) void {
                         // counters
                         game.vm.vars[0x32] = 6;
                         game.vm.vars[0x64] = 20;
-                        std.log.warn("Script::op_condJmp() bypassing protection", .{});
+                        vm_log.warn("Script::op_condJmp() bypassing protection", .{});
                         expr = true;
                     }
                 }
@@ -2040,7 +2043,7 @@ fn opCondJmp(game: *Game) void {
         3 => expr = (b >= a),
         4 => expr = (b < a),
         5 => expr = (b <= a),
-        else => std.log.warn("Script::op_condJmp() invalid condition {}", .{op & 7}),
+        else => vm_log.warn("Script::op_condJmp() invalid condition {}", .{op & 7}),
     }
     if (expr) {
         opJmp(game);
@@ -2055,16 +2058,9 @@ fn opCondJmp(game: *Game) void {
 
 fn opSetPalette(game: *Game) void {
     const i = fetchWord(&game.vm.ptr);
-    std.log.debug("Script::op_changePalette({})", .{i});
+    vm_log.debug("Script::op_changePalette({})", .{i});
     const num = i >> 8;
-    if (game.gfx.fix_up_palette) {
-        if (game.res.current_part == .intro) {
-            if (num == 10 or num == 16) {
-                return;
-            }
-        }
-        game.video.next_pal = @intCast(num);
-    } else {
+    if (!game.gfx.fix_up_palette or game.res.current_part != .intro or (num != 10 and num != 16)) {
         game.video.next_pal = @intCast(num);
     }
 }
@@ -2073,12 +2069,12 @@ fn opChangeTasksState(game: *Game) void {
     const start = fetchByte(&game.vm.ptr);
     const end = fetchByte(&game.vm.ptr);
     if (end < start) {
-        std.log.warn("Script::op_changeTasksState() ec=0x880 (end < start)", .{});
+        vm_log.warn("Script::op_changeTasksState() ec=0x880 (end < start)", .{});
         return;
     }
     const state = fetchByte(&game.vm.ptr);
 
-    std.log.debug("Script::op_changeTasksState({}, {}, {})", .{ start, end, state });
+    vm_log.debug("Script::op_changeTasksState({}, {}, {})", .{ start, end, state });
 
     if (state == 2) {
         for (start..end + 1) |i| {
@@ -2093,21 +2089,21 @@ fn opChangeTasksState(game: *Game) void {
 
 fn opSelectPage(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_selectPage({})", .{i});
+    vm_log.debug("Script::op_selectPage({})", .{i});
     gameVideoSetWorkPagePtr(game, i);
 }
 
 fn opFillPage(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const color = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_fillPage({}, {})", .{ i, color });
+    vm_log.debug("Script::op_fillPage({}, {})", .{ i, color });
     gameVideoFillPage(game, i, color);
 }
 
 fn opCopyPage(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const j = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_copyPage({}, {})", .{ i, j });
+    vm_log.debug("Script::op_copyPage({}, {})", .{ i, j });
     gameVideoCopyPage(game, i, j, game.vm.vars[GAME_VAR_SCROLL_Y]);
 }
 
@@ -2133,7 +2129,7 @@ fn inpHandleSpecialKeys(game: *Game) void {
 
 fn opUpdateDisplay(game: *Game) void {
     const page = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_updateDisplay({})", .{page});
+    vm_log.debug("Script::op_updateDisplay({})", .{page});
     inpHandleSpecialKeys(game);
 
     if (game.enable_protection) {
@@ -2158,7 +2154,7 @@ fn opUpdateDisplay(game: *Game) void {
 }
 
 fn opRemoveTask(game: *Game) void {
-    std.log.debug("Script::op_removeTask()", .{});
+    vm_log.debug("Script::op_removeTask()", .{});
     game.vm.ptr.pc = 0xFFFF;
     game.vm.paused = true;
 }
@@ -2168,42 +2164,42 @@ fn opDrawString(game: *Game) void {
     const x: u16 = fetchByte(&game.vm.ptr);
     const y: u16 = fetchByte(&game.vm.ptr);
     const col: u16 = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_drawString(0x{X}, {}, {}, {})", .{ strId, x, y, col });
+    vm_log.debug("Script::op_drawString(0x{X}, {}, {}, {})", .{ strId, x, y, col });
     gameVideoDrawString(game, @truncate(col), x, y, strId);
 }
 
 fn opSub(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const j = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_sub(0x{X}, 0x{X})", .{ i, j });
+    vm_log.debug("Script::op_sub(0x{X}, 0x{X})", .{ i, j });
     game.vm.vars[i] -= game.vm.vars[j];
 }
 
 fn opAnd(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const n: u16 = fetchWord(&game.vm.ptr);
-    std.log.debug("Script::op_and(0x{X}, {})", .{ i, n });
+    vm_log.debug("Script::op_and(0x{X}, {})", .{ i, n });
     game.vm.vars[i] = @bitCast(@as(u16, @bitCast(game.vm.vars[i])) & n);
 }
 
 fn opOr(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const n: i16 = @bitCast(fetchWord(&game.vm.ptr));
-    std.log.debug("Script::op_or(0x{X}, {})", .{ i, n });
+    vm_log.debug("Script::op_or(0x{X}, {})", .{ i, n });
     game.vm.vars[i] = game.vm.vars[i] | n;
 }
 
 fn opShl(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const n: u4 = @intCast(fetchWord(&game.vm.ptr));
-    std.log.debug("Script::op_shl(0x{X:0>2}, {})", .{ i, n });
+    vm_log.debug("Script::op_shl(0x{X:0>2}, {})", .{ i, n });
     game.vm.vars[i] = @bitCast(@as(u16, @intCast(game.vm.vars[i])) << n);
 }
 
 fn opShr(game: *Game) void {
     const i = fetchByte(&game.vm.ptr);
     const n: u4 = @intCast(fetchWord(&game.vm.ptr));
-    std.log.debug("Script::op_shr(0x{X:0>2}, {})", .{ i, n });
+    vm_log.debug("Script::op_shr(0x{X:0>2}, {})", .{ i, n });
     game.vm.vars[i] = @bitCast(@as(u16, @intCast(game.vm.vars[i])) >> n);
 }
 
@@ -2212,13 +2208,13 @@ fn opPlaySound(game: *Game) void {
     const freq = fetchByte(&game.vm.ptr);
     const vol: u8 = @truncate(fetchByte(&game.vm.ptr));
     const channel = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_playSound(0x{X}, {}, {}, {})", .{ res_num, freq, vol, channel });
+    vm_log.debug("Script::op_playSound(0x{X}, {}, {}, {})", .{ res_num, freq, vol, channel });
     sndPlaySound(game, res_num, freq, vol, @intCast(channel));
 }
 
 fn opUpdateResources(game: *Game) void {
     const num = fetchWord(&game.vm.ptr);
-    std.log.debug("Script::op_updateResources({})", .{num});
+    vm_log.debug("Script::op_updateResources({})", .{num});
     if (num == 0) {
         gameAudioStopAll(game);
         gameResInvalidate(game);
@@ -2228,7 +2224,7 @@ fn opUpdateResources(game: *Game) void {
 }
 
 fn sndPlayMusic(game: *Game, resNum: u16, delay: u16, pos: u8) void {
-    std.log.debug("snd_playMusic(0x{X}, {}, {})", .{ resNum, delay, pos });
+    snd_log.debug("snd_playMusic(0x{X}, {}, {})", .{ resNum, delay, pos });
     // DT_AMIGA, DT_ATARI, DT_DOS
     if (resNum != 0) {
         gameAudioSfxLoadModule(game, resNum, delay, pos);
@@ -2245,7 +2241,7 @@ fn opPlayMusic(game: *Game) void {
     const res_num = fetchWord(&game.vm.ptr);
     const delay = fetchWord(&game.vm.ptr);
     const pos = fetchByte(&game.vm.ptr);
-    std.log.debug("Script::op_playMusic(0x{X}, {}, {})", .{ res_num, delay, pos });
+    vm_log.debug("Script::op_playMusic(0x{X}, {}, {})", .{ res_num, delay, pos });
     sndPlayMusic(game, res_num, delay, pos);
 }
 

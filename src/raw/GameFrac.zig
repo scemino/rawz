@@ -6,7 +6,6 @@ offset: u32 = 0,
 const Self = @This();
 
 pub fn reset(frac: *Self, n: i32, d: i32) void {
-    // TODO: check this
     frac.inc = @as(u64, @bitCast(@divTrunc((@as(i64, n) << bits), d)));
     frac.offset = 0;
 }

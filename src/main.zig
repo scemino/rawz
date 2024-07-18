@@ -12,6 +12,30 @@ const sapp = sokol.app;
 const sglue = sokol.glue;
 const simgui = sokol.imgui;
 
+pub const std_options = .{
+    // Set the log level to info
+    .log_level = .debug,
+    // Define logFn to override the std implementation
+    .logFn = gameLogFn,
+};
+
+pub fn gameLogFn(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLiteral), comptime format: []const u8, args: anytype) void {
+    const scope_prefix = "(" ++ switch (scope) {
+        // choose the debug channels by changing this:
+        // .video, .vm, .sound, .bank, std.log.default_log_scope => @tagName(scope),
+        std.log.default_log_scope => @tagName(scope),
+        else => return,
+    } ++ "): ";
+
+    const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
+
+    // Print the message to stderr, silently ignoring any errors
+    std.debug.lockStdErr();
+    defer std.debug.unlockStdErr();
+    const stderr = std.io.getStdErr().writer();
+    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
+}
+
 const state = struct {
     const GameOptions = struct {
         part_num: raw.GamePart = .intro,
@@ -55,6 +79,7 @@ export fn init() void {
         std.log.err("Game init failed: {}", .{e});
         return;
     };
+    sapp.setWindowTitle(state.game.title);
 
     // initialize sokol-gfx
     gfx.init(.{
