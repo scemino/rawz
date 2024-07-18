@@ -1,6 +1,7 @@
 pub const GameDataType = enum(u2) { dos, amiga, atari };
 const GameLang = @import("Strings.zig").GameLang;
 
+/// Detects from the size of the first bank if it's the amiga or atari game
 pub fn detectAmigaAtari(bank01_len: usize) ?struct { data_type: GameDataType, lang: GameLang, entries: []const AmigaMemEntry } {
     return switch (bank01_len) {
         244674 => .{ .data_type = .amiga, .lang = .fr, .entries = &mem_list_amiga_fr },
