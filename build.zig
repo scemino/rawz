@@ -33,29 +33,40 @@ pub fn build(b: *Build) !void {
 }
 
 fn buildNative(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Dependency, dep_cimgui: *Dependency) !void {
-    const demo = b.addExecutable(.{
+    const exe = b.addExecutable(.{
         .name = "raw_zig",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    demo.root_module.addImport("sokol", dep_sokol.module("sokol"));
-    demo.root_module.addImport("cimgui", dep_cimgui.module("cimgui"));
-    b.installArtifact(demo);
-    b.step("run", "Run demo").dependOn(&b.addRunArtifact(demo).step);
+    const clap = b.dependency("clap", .{});
+    exe.root_module.addImport("clap", clap.module("clap"));
+    exe.root_module.addImport("sokol", dep_sokol.module("sokol"));
+    exe.root_module.addImport("cimgui", dep_cimgui.module("cimgui"));
+    b.installArtifact(exe);
+
+    const run_cmd = b.addRunArtifact(exe);
+    // This allows the user to pass arguments to the application in the build
+    // command itself, like this: `zig build run -- arg1 arg2 etc`
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
+    b.step("run", "Run exe").dependOn(&run_cmd.step);
 }
 
 fn buildWasm(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Dependency, dep_cimgui: *Dependency) !void {
     // build the main file into a library, this is because the WASM 'exe'
     // needs to be linked in a separate build step with the Emscripten linker
-    const demo = b.addStaticLibrary(.{
-        .name = "demo",
+    const exe = b.addStaticLibrary(.{
+        .name = "raw_zig",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    demo.root_module.addImport("sokol", dep_sokol.module("sokol"));
-    demo.root_module.addImport("cimgui", dep_cimgui.module("cimgui"));
+    const clap = b.dependency("clap", .{});
+    exe.root_module.addImport("clap", clap.module("clap"));
+    exe.root_module.addImport("sokol", dep_sokol.module("sokol"));
+    exe.root_module.addImport("cimgui", dep_cimgui.module("cimgui"));
 
     // get the Emscripten SDK dependency from the sokol dependency
     const dep_emsdk = dep_sokol.builder.dependency("emsdk", .{});
@@ -74,7 +85,7 @@ fn buildWasm(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_soko
 
     // create a build step which invokes the Emscripten linker
     const link_step = try sokol.emLinkStep(b, .{
-        .lib_main = demo,
+        .lib_main = exe,
         .target = target,
         .optimize = optimize,
         .emsdk = dep_emsdk,
@@ -86,5 +97,5 @@ fn buildWasm(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_soko
     // ...and a special run step to start the web build output via 'emrun'
     const run = sokol.emRunStep(b, .{ .name = "demo", .emsdk = dep_emsdk });
     run.step.dependOn(&link_step.step);
-    b.step("run", "Run demo").dependOn(&run.step);
+    b.step("run", "Run exe").dependOn(&run.step);
 }

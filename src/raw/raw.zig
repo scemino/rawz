@@ -264,7 +264,7 @@ const GameRes = struct {
 
 // configuration parameters for game_init()
 const GameDesc = struct {
-    part_num: GamePart, // indicates the part number where the fame starts
+    part_num: u16, // indicates the part number where the fame starts
     use_ega: bool, // true to use EGA palette, false to use VGA palette
     lang: GameLang, // language to use
     enable_protection: bool,
@@ -351,7 +351,7 @@ pub const Game = struct {
     // TODO: debug:game_debug_t,
     res: GameRes,
     strings_table: Strings,
-    part_num: GamePart,
+    part_num: u16,
     elapsed: u32,
     sleep: u32,
 
@@ -434,10 +434,10 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
     game.strings_table = Strings.init(game.res.lang);
 
     if (game.enable_protection and (game.res.data_type != .dos or game.res.has_password_screen)) {
-        game.part_num = .copy_protection;
+        game.part_num = @intFromEnum(GamePart.copy_protection);
     }
 
-    const num = @intFromEnum(game.part_num);
+    const num = game.part_num;
     if (num < 36) {
         gameVmRestartAt(game, @enumFromInt(restart_pos[num * 2]), restart_pos[num * 2 + 1]);
     } else {

@@ -5,7 +5,7 @@ pub fn byteKillerUnpack(dst: []u8, src: []const u8) bool {
     var uc = UnpackContext{
         .src_buf = src,
         .src_i = @intCast(src.len - 8),
-        .size = std.mem.readInt(u32, src[src.len - 4 ..][0..4], .big),
+        .size = @intCast(std.mem.readInt(u32, src[src.len - 4 ..][0..4], .big)),
         .dst_buf = dst,
         .dst_i = 0,
         .crc = 0,

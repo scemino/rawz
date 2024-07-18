@@ -1,4 +1,5 @@
 const std = @import("std");
+const clap = @import("clap");
 const ig = @import("cimgui");
 const sokol = @import("sokol");
 const raw = @import("raw/raw.zig");
@@ -22,8 +23,8 @@ pub const std_options = .{
 pub fn gameLogFn(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLiteral), comptime format: []const u8, args: anytype) void {
     const scope_prefix = "(" ++ switch (scope) {
         // choose the debug channels by changing this:
-        // .video, .vm, .sound, .bank, std.log.default_log_scope => @tagName(scope),
-        std.log.default_log_scope => @tagName(scope),
+        .video, .vm, .sound, .bank, std.log.default_log_scope => @tagName(scope),
+        // std.log.default_log_scope => @tagName(scope),
         else => return,
     } ++ "): ";
 
@@ -38,10 +39,11 @@ pub fn gameLogFn(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLit
 
 const state = struct {
     const GameOptions = struct {
-        part_num: raw.GamePart = .intro,
+        part_num: u16 = 16001,
         use_ega: bool = false,
         lang: raw.GameLang = .us,
         enable_protection: bool = false,
+        fullscreen: bool = false,
     };
 
     var ready: bool = false;
@@ -175,14 +177,54 @@ export fn event(ev: [*c]const sapp.Event) void {
 }
 
 pub fn main() void {
+    const params = comptime clap.parseParamsComptime(
+        \\-h, --help             Display this help and exit.
+        \\-p, --part <PART>      Game part to start from (0-35 or 16001-16009)
+        \\-e, --ega              Use EGA palette with DOS version
+        \\-l, --lang <LANG>      Language (fr,us)
+        \\--protec               Enable game protection
+        \\--fullscreen           Start in fullscreen mode
+        \\
+    );
+
+    const parsers = comptime .{
+        .LANG = clap.parsers.string,
+        .PART = clap.parsers.int(usize, 10),
+    };
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
+    var diag = clap.Diagnostic{};
+    var res = clap.parse(clap.Help, &params, parsers, .{
+        .allocator = gpa.allocator(),
+    }) catch |err| {
+        // Report useful error and exit
+        diag.report(std.io.getStdErr().writer(), err) catch {};
+        return;
+    };
+    defer res.deinit();
+
+    // args to options
+    if (res.args.help != 0)
+        return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{}) catch return;
+    if (res.args.part) |part|
+        state.options.part_num = @intCast(part);
+    if (res.args.lang) |lang|
+        state.options.lang = if (std.mem.eql(u8, lang, "us")) .us else .fr;
+    state.options.use_ega = res.args.ega != 0;
+    state.options.enable_protection = res.args.protec != 0;
+    state.options.fullscreen = res.args.fullscreen != 0;
+
     sapp.run(.{
         .init_cb = init,
         .frame_cb = frame,
         .cleanup_cb = cleanup,
+        .fullscreen = state.options.fullscreen,
         .event_cb = event,
         .window_title = "RAW zig",
-        .width = 800,
-        .height = 600,
+        .width = 640,
+        .height = 400,
         .icon = .{ .sokol_default = true },
         .logger = .{ .func = slog.func },
     });
