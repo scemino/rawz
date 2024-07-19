@@ -52,6 +52,7 @@ const font = [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 
 
 const restart_pos = [36 * 2]i16{ 16008, 0, 16001, 0, 16002, 10, 16002, 12, 16002, 14, 16003, 20, 16003, 24, 16003, 26, 16004, 30, 16004, 31, 16004, 32, 16004, 33, 16004, 34, 16004, 35, 16004, 36, 16004, 37, 16004, 38, 16004, 39, 16004, 40, 16004, 41, 16004, 42, 16004, 43, 16004, 44, 16004, 45, 16004, 46, 16004, 47, 16004, 48, 16004, 49, 16006, 64, 16006, 65, 16006, 66, 16006, 67, 16006, 68, 16005, 50, 16006, 60, 16007, 0 };
 const mem_list_parts = [_][4]u8{
+    // ipal, icod, ivd1, ivd2
     .{ 0x14, 0x15, 0x16, 0x00 }, // 16000 - protection screens
     .{ 0x17, 0x18, 0x19, 0x00 }, // 16001 - introduction
     .{ 0x1A, 0x1B, 0x1C, 0x11 }, // 16002 - water
@@ -200,7 +201,7 @@ const GameInputDir = packed struct {
     down: bool = false,
 };
 
-const GameRes = struct {
+pub const GameRes = struct {
     mem_list: [GAME_ENTRIES_COUNT]GameMemEntry,
     num_mem_list: u16,
     mem: [GAME_MEM_BLOCK_SIZE]u8,
@@ -254,7 +255,7 @@ pub const Game = struct {
         fbs: [4]GameFramebuffer,
         palette: [256]u32, // palette containing 16 RGBA colors
         draw_page: u2,
-        fix_up_palette: bool, // redraw all primitives on setPal script call
+        fix_up_palette: bool = false, // redraw all primitives on setPal script call
     };
 
     const Audio = struct {
@@ -1015,27 +1016,15 @@ fn gameVideoReadPaletteEga(buf: []const u8, num: u8, pal: *[16]u32) void {
     inline for (0..16) |i| {
         const color: usize = readBeU16(p);
         p = p[2..];
-        // if (1)
-        {
-            const ega = palette_ega[3 * ((color >> 12) & 15) ..][0..3];
-            pal[i] = 0xFF000000 | @as(u32, @intCast(ega[0])) | (@as(u32, @intCast(ega[1])) << 8) | (@as(u32, @intCast(ega[2])) << 16);
-        }
-        //  else { // lower 12 bits hold other colors
-        // 	uint32_t r = (color >> 8) & 0xF;
-        // 	uint32_t g = (color >> 4) & 0xF;
-        // 	uint32_t b =  color       & 0xF;
-        // 	r = (r << 4) | r;
-        // 	g = (g << 4) | g;
-        // 	b = (b << 4) | b;
-        //     pal[i] = 0xFF000000 | (((uint32_t)r)) | (((uint32_t)g) << 8) | (((uint32_t)b) << 16);
-        // }
+        const ega = palette_ega[3 * ((color >> 12) & 15) ..][0..3];
+        pal[i] = 0xFF000000 | @as(u32, @intCast(ega[0])) | (@as(u32, @intCast(ega[1])) << 8) | (@as(u32, @intCast(ega[2])) << 16);
     }
 }
 
 fn gameVideoReadPaletteAmiga(buf: []const u8, num: u8, pal: *[16]u32) void {
     var p = buf[@as(usize, @intCast(num)) * 16 * @sizeOf(u16) ..];
-    for (0..16) |i| {
-        const color = std.mem.readInt(u16, p[i * 2 ..][0..2], .big);
+    inline for (0..16) |i| {
+        const color = readBeU16(p[i * 2 ..]);
         var r: u32 = (color >> 8) & 0xF;
         var g: u32 = (color >> 4) & 0xF;
         var b: u32 = color & 0xF;
@@ -1056,6 +1045,8 @@ fn gameVideoChangePal(game: *Game, pal_num: u8) void {
         }
         gameGfxSetPalette(game, pal);
         game.video.current_pal = pal_num;
+    } else {
+        _ = 42;
     }
 }
 
@@ -2017,8 +2008,8 @@ fn opCondJmp(game: *Game) void {
 
 fn opSetPalette(game: *Game) void {
     const i = fetchWord(&game.vm.ptr);
-    vm_log.debug("Script::op_changePalette({})", .{i});
     const num = i >> 8;
+    vm_log.debug("Script::op_changePalette({})", .{num});
     if (!game.gfx.fix_up_palette or game.res.current_part != .intro or (num != 10 and num != 16)) {
         game.video.next_pal = @intCast(num);
     }

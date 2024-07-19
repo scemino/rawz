@@ -1,6 +1,5 @@
 const std = @import("std");
 const clap = @import("clap");
-const ig = @import("cimgui");
 const sokol = @import("sokol");
 const raw = @import("raw/raw.zig");
 const GameData = @import("raw/GameData.zig");
@@ -8,9 +7,9 @@ const time = @import("common/time.zig");
 const gfx = @import("common/gfx.zig");
 const prof = @import("common/prof.zig");
 const audio = @import("common/audio.zig");
+const ui = @import("ui/ui.zig");
 const slog = sokol.log;
 const sapp = sokol.app;
-const simgui = sokol.imgui;
 
 pub const std_options = .{
     // Set the log level to info
@@ -92,40 +91,15 @@ export fn init() void {
         .display = raw.displayInfo(&state.game),
         .pixel_aspect = .{ .width = 2, .height = 2 },
     });
-    // initialize sokol-imgui
-    simgui.setup(.{
-        .logger = .{ .func = slog.func },
-    });
+    ui.init(.{ .game = &state.game });
 }
 
 export fn frame() void {
     state.frame_time_us = time.frameTime();
     prof.pushMicroSeconds(.FRAME, state.frame_time_us);
 
-    // call simgui.newFrame() before any ImGui calls
-    simgui.newFrame(.{
-        .width = sapp.width(),
-        .height = sapp.height(),
-        .delta_time = sapp.frameDuration(),
-        .dpi_scale = sapp.dpiScale(),
-    });
+    ui.draw();
 
-    //=== UI CODE STARTS HERE
-    // ig.igSetNextWindowPos(.{ .x = 10, .y = 10 }, ig.ImGuiCond_Once, .{ .x = 0, .y = 0 });
-    // ig.igSetNextWindowSize(.{ .x = 400, .y = 100 }, ig.ImGuiCond_Once);
-    // _ = ig.igBegin("GFX", 0, ig.ImGuiWindowFlags_None);
-    // for (0..16) |i| {
-    //     const color = ig.ImColor_ImColor_U32(@as(c_uint, state.game.gfx.palette[i]));
-    //     ig.igPushID_Int(@intCast(i));
-    //     _ = ig.igColorEdit3("", &color.*.Value.x, ig.ImGuiColorEditFlags_NoInputs);
-    //     ig.igSameLine(0, 0);
-    //     ig.igPopID();
-    // }
-    // ig.igNewLine();
-    // ig.igEnd();
-    //=== UI CODE ENDS HERE
-
-    // call simgui.render() inside a sokol-gfx pass
     time.emuStart();
     raw.gameExec(&state.game, state.frame_time_us / 1000) catch @panic("gameexec failed");
     prof.pushMicroSeconds(.EMU, time.emuEnd());
@@ -140,13 +114,13 @@ export fn frame() void {
 }
 
 export fn cleanup() void {
-    simgui.shutdown();
+    ui.shutdown();
     gfx.shutdown();
 }
 
 export fn event(ev: [*c]const sapp.Event) void {
     // forward input events to sokol-imgui
-    _ = simgui.handleEvent(ev.*);
+    _ = ui.handleEvent(ev);
     switch (ev.*.type) {
         .CHAR => {
             const c = ev.*.char_code;
