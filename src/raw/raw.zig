@@ -4,6 +4,7 @@ const glue = @import("../common/glue.zig");
 const DemoJoy = @import("DemoJoy.zig");
 const Strings = @import("Strings.zig");
 const GameFrac = @import("GameFrac.zig");
+const GameData = @import("GameData.zig");
 pub const mementries = @import("mementries.zig");
 pub const byteKillerUnpack = @import("unpack.zig").byteKillerUnpack;
 pub const detectAmigaAtari = mementries.detectAmigaAtari;
@@ -197,48 +198,6 @@ const GameInputDir = packed struct {
     right: bool = false,
     up: bool = false,
     down: bool = false,
-};
-
-const GameBanks = struct {
-    bank01: []const u8,
-    bank02: ?[]const u8 = null,
-    bank03: ?[]const u8 = null,
-    bank04: ?[]const u8 = null,
-    bank05: ?[]const u8 = null,
-    bank06: ?[]const u8 = null,
-    bank07: ?[]const u8 = null,
-    bank08: ?[]const u8 = null,
-    bank09: ?[]const u8 = null,
-    bank0A: ?[]const u8 = null,
-    bank0B: ?[]const u8 = null,
-    bank0C: ?[]const u8 = null,
-    bank0D: ?[]const u8 = null,
-
-    fn get(self: GameBanks, i: usize) ?[]const u8 {
-        switch (i + 1) {
-            0x1 => return self.bank01,
-            0x2 => return self.bank02,
-            0x3 => return self.bank03,
-            0x4 => return self.bank04,
-            0x5 => return self.bank05,
-            0x6 => return self.bank06,
-            0x7 => return self.bank07,
-            0x8 => return self.bank08,
-            0x9 => return self.bank09,
-            0xA => return self.bank0A,
-            0xB => return self.bank0B,
-            0xC => return self.bank0C,
-            0xD => return self.bank0D,
-            else => return null,
-        }
-        unreachable;
-    }
-};
-
-const GameData = struct {
-    mem_list: ?[]const u8 = null,
-    banks: GameBanks,
-    demo3_joy: ?[]const u8 = null, // contains content of demo3.joy file if present
 };
 
 const GameRes = struct {
@@ -832,7 +791,7 @@ fn gameResDetectVersion(game: *Game) void {
         game.res.data_type = .dos;
         std.log.info("Using DOS data files", .{});
     } else {
-        const detection = detectAmigaAtari(game.res.data.banks.bank01.len);
+        const detection = detectAmigaAtari(game.res.data.banks.bank01.?.len);
         if (detection) |detected| {
             game.res.data_type = detected.data_type;
             if (detected.data_type == .atari) {

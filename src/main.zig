@@ -3,14 +3,13 @@ const clap = @import("clap");
 const ig = @import("cimgui");
 const sokol = @import("sokol");
 const raw = @import("raw/raw.zig");
+const GameData = @import("raw/GameData.zig");
 const time = @import("common/time.zig");
 const gfx = @import("common/gfx.zig");
 const prof = @import("common/prof.zig");
 const audio = @import("common/audio.zig");
 const slog = sokol.log;
-const sg = sokol.gfx;
 const sapp = sokol.app;
-const sglue = sokol.glue;
 const simgui = sokol.imgui;
 
 pub const std_options = .{
@@ -43,7 +42,7 @@ const state = struct {
         use_ega: bool = false,
         lang: raw.GameLang = .us,
         enable_protection: bool = false,
-        fullscreen: bool = false,
+        data: ?GameData = null,
     };
 
     var ready: bool = false;
@@ -52,6 +51,20 @@ const state = struct {
     var game: raw.Game = undefined;
     var frame_time_us: u32 = 0;
 };
+
+pub fn defaultPCDemoGameData() GameData {
+    return .{
+        .banks = .{
+            .bank0D = @embedFile("data/pc_demo/BANK0D"),
+            .bank01 = @embedFile("data/pc_demo/BANK01"),
+            .bank02 = @embedFile("data/pc_demo/BANK02"),
+            .bank05 = @embedFile("data/pc_demo/BANK05"),
+            .bank06 = @embedFile("data/pc_demo/BANK06"),
+        },
+        .mem_list = @embedFile("data/pc_demo/MEMLIST.BIN"),
+        .demo3_joy = @embedFile("data/pc_demo/DEMO3.JOY"),
+    };
+}
 
 export fn init() void {
     audio.init(.{});
@@ -66,17 +79,7 @@ export fn init() void {
         .use_ega = state.options.use_ega,
         .enable_protection = state.options.enable_protection,
         .lang = state.options.lang,
-        .data = .{
-            .banks = .{
-                .bank0D = @embedFile("data/pc_demo/BANK0D"),
-                .bank01 = @embedFile("data/pc_demo/BANK01"),
-                .bank02 = @embedFile("data/pc_demo/BANK02"),
-                .bank05 = @embedFile("data/pc_demo/BANK05"),
-                .bank06 = @embedFile("data/pc_demo/BANK06"),
-            },
-            .mem_list = @embedFile("data/pc_demo/MEMLIST.BIN"),
-            .demo3_joy = @embedFile("data/pc_demo/DEMO3.JOY"),
-        },
+        .data = state.options.data orelse defaultPCDemoGameData(),
     }) catch |e| {
         std.log.err("Game init failed: {}", .{e});
         return;
@@ -130,7 +133,7 @@ export fn frame() void {
     gfx.draw(.{
         .display = raw.displayInfo(&state.game),
         .status = .{
-            .name = "RAW zig",
+            .name = "RAW",
             .num_ticks = 0,
             .frame_stats = prof.stats(.FRAME),
             .emu_stats = prof.stats(.EMU),
@@ -140,7 +143,7 @@ export fn frame() void {
 
 export fn cleanup() void {
     simgui.shutdown();
-    sg.shutdown();
+    gfx.shutdown();
 }
 
 export fn event(ev: [*c]const sapp.Event) void {
@@ -184,11 +187,12 @@ pub fn main() void {
         \\-l, --lang <LANG>      Language (fr,us)
         \\--protec               Enable game protection
         \\--fullscreen           Start in fullscreen mode
-        \\
+        \\<PATH>                 Path to the game data (directory or tar archive) 
     );
 
     const parsers = comptime .{
         .LANG = clap.parsers.string,
+        .PATH = clap.parsers.string,
         .PART = clap.parsers.int(usize, 10),
     };
 
@@ -214,17 +218,21 @@ pub fn main() void {
         state.options.lang = if (std.mem.eql(u8, lang, "us")) .us else .fr;
     state.options.use_ega = res.args.ega != 0;
     state.options.enable_protection = res.args.protec != 0;
-    state.options.fullscreen = res.args.fullscreen != 0;
+
+    if (res.positionals.len > 0) {
+        const path = res.positionals[0];
+        state.options.data = GameData.readData(path);
+    }
 
     sapp.run(.{
         .init_cb = init,
         .frame_cb = frame,
         .cleanup_cb = cleanup,
-        .fullscreen = state.options.fullscreen,
+        .fullscreen = res.args.fullscreen != 0,
         .event_cb = event,
         .window_title = "RAW zig",
-        .width = 640,
-        .height = 400,
+        .width = 2 * raw.GAME_WIDTH + gfx.DEFAULT_BORDER.left + gfx.DEFAULT_BORDER.right,
+        .height = 2 * raw.GAME_HEIGHT + gfx.DEFAULT_BORDER.top + gfx.DEFAULT_BORDER.bottom,
         .icon = .{ .sokol_default = true },
         .logger = .{ .func = slog.func },
     });
