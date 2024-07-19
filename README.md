@@ -1,5 +1,7 @@
 # rawz - Another World Interpreter in Zig
 
+[![build](https://github.com/scemino/rawz/actions/workflows/main.yml/badge.svg)](https://github.com/scemino/rawz/actions/workflows/main.yml)
+
 `rawz` is a re-implementation of the engine used in the game Another World.
 
 ![Screenshot Intro Amiga](docs/screenshot-intro-amiga.png)
