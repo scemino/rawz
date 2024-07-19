@@ -34,7 +34,7 @@ pub fn build(b: *Build) !void {
 
 fn buildNative(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Dependency, dep_cimgui: *Dependency) !void {
     const exe = b.addExecutable(.{
-        .name = "raw_zig",
+        .name = "rawz",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
@@ -58,7 +58,7 @@ fn buildWasm(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_soko
     // build the main file into a library, this is because the WASM 'exe'
     // needs to be linked in a separate build step with the Emscripten linker
     const exe = b.addStaticLibrary(.{
-        .name = "raw_zig",
+        .name = "rawz",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
@@ -95,7 +95,7 @@ fn buildWasm(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_soko
         .shell_file_path = dep_sokol.path("src/sokol/web/shell.html").getPath(b),
     });
     // ...and a special run step to start the web build output via 'emrun'
-    const run = sokol.emRunStep(b, .{ .name = "demo", .emsdk = dep_emsdk });
+    const run = sokol.emRunStep(b, .{ .name = "rawz", .emsdk = dep_emsdk });
     run.step.dependOn(&link_step.step);
     b.step("run", "Run exe").dependOn(&run.step);
 }

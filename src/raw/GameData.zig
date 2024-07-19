@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 mem_list: ?[]const u8 = null, // contains content of memlist.bin file if present
 banks: GameBanks,
@@ -114,16 +115,18 @@ fn readBanksFromDirectory(path: []const u8) Banks {
     defer _ = gpa.deinit();
 
     var banks: Banks = [1]?[]const u8{null} ** 16;
-    var it = dir.iterate();
-    while (it.next() catch @panic("Failed to iterate dir")) |entry| {
-        var out_str: [16]u8 = undefined;
-        if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..4]), "bank")) {
-            const index = std.fmt.parseInt(u8, entry.name[4..], 16) catch continue;
-            banks[index] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
-        } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..11]), "memlist.bin")) {
-            banks[0xE] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
-        } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..9]), "demo3.joy")) {
-            banks[0xF] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
+    if (!builtin.target.isWasm()) {
+        var it = dir.iterate();
+        while (it.next() catch @panic("Failed to iterate dir")) |entry| {
+            var out_str: [16]u8 = undefined;
+            if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..4]), "bank")) {
+                const index = std.fmt.parseInt(u8, entry.name[4..], 16) catch continue;
+                banks[index] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
+            } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..11]), "memlist.bin")) {
+                banks[0xE] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
+            } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..9]), "demo3.joy")) {
+                banks[0xF] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
+            }
         }
     }
     return banks;
