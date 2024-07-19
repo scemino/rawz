@@ -111,18 +111,18 @@ export fn frame() void {
     });
 
     //=== UI CODE STARTS HERE
-    ig.igSetNextWindowPos(.{ .x = 10, .y = 10 }, ig.ImGuiCond_Once, .{ .x = 0, .y = 0 });
-    ig.igSetNextWindowSize(.{ .x = 400, .y = 100 }, ig.ImGuiCond_Once);
-    _ = ig.igBegin("GFX", 0, ig.ImGuiWindowFlags_None);
-    for (0..16) |i| {
-        const color = ig.ImColor_ImColor_U32(@as(c_uint, state.game.gfx.palette[i]));
-        ig.igPushID_Int(@intCast(i));
-        _ = ig.igColorEdit3("", &color.*.Value.x, ig.ImGuiColorEditFlags_NoInputs);
-        ig.igSameLine(0, 0);
-        ig.igPopID();
-    }
-    ig.igNewLine();
-    ig.igEnd();
+    // ig.igSetNextWindowPos(.{ .x = 10, .y = 10 }, ig.ImGuiCond_Once, .{ .x = 0, .y = 0 });
+    // ig.igSetNextWindowSize(.{ .x = 400, .y = 100 }, ig.ImGuiCond_Once);
+    // _ = ig.igBegin("GFX", 0, ig.ImGuiWindowFlags_None);
+    // for (0..16) |i| {
+    //     const color = ig.ImColor_ImColor_U32(@as(c_uint, state.game.gfx.palette[i]));
+    //     ig.igPushID_Int(@intCast(i));
+    //     _ = ig.igColorEdit3("", &color.*.Value.x, ig.ImGuiColorEditFlags_NoInputs);
+    //     ig.igSameLine(0, 0);
+    //     ig.igPopID();
+    // }
+    // ig.igNewLine();
+    // ig.igEnd();
     //=== UI CODE ENDS HERE
 
     // call simgui.render() inside a sokol-gfx pass
@@ -133,8 +133,6 @@ export fn frame() void {
     gfx.draw(.{
         .display = raw.displayInfo(&state.game),
         .status = .{
-            .name = "RAW",
-            .num_ticks = 0,
             .frame_stats = prof.stats(.FRAME),
             .emu_stats = prof.stats(.EMU),
         },

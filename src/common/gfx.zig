@@ -37,8 +37,6 @@ pub const Options = struct {
 };
 
 pub const Status = struct {
-    name: []const u8,
-    num_ticks: u32,
     frame_stats: prof.Stats,
     emu_stats: prof.Stats,
 };
@@ -373,12 +371,10 @@ fn drawStatusBar(status: Status) void {
     sdtx.canvas(w, h);
     sdtx.color3b(255, 255, 255);
     sdtx.pos(1.0, (h / 8.0) - 1.5);
-    sdtx.print("sys:{s} frame:{d:.2}ms emu:{d:.2}ms (min:{d:.2}ms max:{d:.2}ms) ticks:{}", .{
-        status.name,
+    sdtx.print("frame:{d:.2}ms emu:{d:.2}ms (min:{d:.2}ms max:{d:.2}ms)", .{
         status.frame_stats.avg_val,
         status.emu_stats.avg_val,
         status.emu_stats.min_val,
         status.emu_stats.max_val,
-        status.num_ticks,
     });
 }
