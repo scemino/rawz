@@ -6,6 +6,8 @@ const sapp = sokol.app;
 const sg = sokol.gfx;
 const ig = @import("cimgui");
 const raw = @import("../raw/raw.zig");
+const Disasm = @import("Disasm.zig");
+const raw_dasm = @import("ui_rawdasm.zig");
 
 const UI_DELETE_STACK_SIZE = 32;
 
@@ -44,6 +46,8 @@ const state = struct {
     var game: *raw.Game = undefined;
     var res: Res = .{};
     var video: Video = .{};
+    var dasm: Disasm = undefined;
+    var layer_names: [8][:0]const u8 = undefined;
     const DeleteStack = struct {
         images: [UI_DELETE_STACK_SIZE]simgui.Image = [1]simgui.Image{.{}} ** UI_DELETE_STACK_SIZE,
         cur_slot: usize = 0,
@@ -68,6 +72,19 @@ pub fn init(desc: Desc) void {
         state.video.tex_fb[i] = createTexture(raw.GAME_WIDTH, raw.GAME_HEIGHT);
     }
     updateStats();
+    var da_desc: Disasm.Desc = .{
+        .title = "Disassembler",
+        .read_cb = _ui_raw_dasm_read,
+        .dasm_op_cb = ui_dasm_op,
+        .user_data = desc.game,
+    };
+    da_desc.layers[0] = "Script";
+    state.dasm = Disasm.init(da_desc);
+}
+
+pub fn ui_dasm_op(layer: usize, pc: u16, in_cb: Disasm.ui_dasm_input_t, out_cb: Disasm.ui_dasm_output_t, user_data: ?*anyopaque) u16 {
+    _ = layer;
+    return raw_dasm.disasmOp(pc, in_cb, out_cb, _ui_raw_getstr, user_data);
 }
 
 pub fn draw() void {
@@ -82,6 +99,7 @@ pub fn draw() void {
     drawMenu();
     drawRes();
     drawVideo();
+    state.dasm.draw();
 }
 
 pub fn handleEvent(ev: [*c]const sapp.Event) bool {
@@ -93,9 +111,26 @@ pub fn shutdown() void {
         destroyTexture(state.video.tex_fb[i]);
     }
     simgui.shutdown();
+    state.dasm.deinit();
 }
 
-pub fn drawVideo() void {
+fn _ui_raw_dasm_read(layer: usize, addr: u16, valid: *bool, user_data: ?*anyopaque) u8 {
+    _ = layer;
+    _ = user_data;
+    valid.* = false;
+    if (addr >= 0 and addr < state.game.res.seg_code.len) {
+        valid.* = true;
+        return state.game.res.seg_code[addr];
+    }
+    return 0;
+}
+
+fn _ui_raw_getstr(id: u16, user_data: ?*anyopaque) []const u8 {
+    _ = user_data;
+    return state.game.strings_table.find(id);
+}
+
+fn drawVideo() void {
     if (!state.video.open) return;
     ig.igSetNextWindowPos(.{ .x = 10, .y = 10 }, ig.ImGuiCond_Once, .{ .x = 0, .y = 0 });
     ig.igSetNextWindowSize(.{ .x = 400, .y = 100 }, ig.ImGuiCond_Once);
@@ -109,7 +144,7 @@ pub fn drawVideo() void {
             _ = ig.igColorEdit3("", &color.*.Value.x, ig.ImGuiColorEditFlags_NoInputs);
             ig.igPopID();
             if (i != 7) {
-                ig.igSameLine(0, 0);
+                ig.igSameLine(0, -1);
             }
         }
         ig.igNewLine();
@@ -123,7 +158,7 @@ pub fn drawVideo() void {
             const border_color = if (state.game.video.buffers[0] == i) ig.ImColor_ImColor_U32(0xFF30FF30) else ig.ImColor_ImColor_Int(1, 1, 1, 1);
             ig.igImage(state.video.tex_fb[i], .{ .x = raw.GAME_WIDTH, .y = raw.GAME_HEIGHT }, .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 1 }, .{ .x = 1, .y = 1, .z = 1, .w = 1 }, border_color.*.Value);
             if (i != 1) {
-                ig.igSameLine(0, 0);
+                ig.igSameLine(0, -1);
             }
         }
     }
@@ -201,7 +236,7 @@ pub fn drawRes() void {
                 _ = ig.igTableNextColumn();
                 ig.igPushStyleVar_Vec2(ig.ImGuiStyleVar_FramePadding, .{});
                 _ = ig.igColorButton("##color", hsv(@as(f32, @floatFromInt(@intFromEnum(e.type))) / 7.0, 0.6, 0.6).Value, ig.ImGuiColorEditFlags_NoTooltip, .{});
-                ig.igSameLine(0, 0);
+                ig.igSameLine(0, -1);
                 ig.igText("%s", labels[@intFromEnum(e.type)]);
                 ig.igPopStyleVar(1);
 
