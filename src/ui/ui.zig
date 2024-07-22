@@ -12,7 +12,7 @@ const raw_dasm = @import("ui_rawdasm.zig");
 const UI_DELETE_STACK_SIZE = 32;
 
 const Desc = struct {
-    game: *raw.Game,
+    game: *raw.game.Game,
 };
 
 const ResStat = struct {
@@ -43,7 +43,7 @@ const Video = struct {
 };
 
 const state = struct {
-    var game: *raw.Game = undefined;
+    var game: *raw.game.Game = undefined;
     var res: Res = .{};
     var video: Video = .{};
     var dasm: Disasm = undefined;

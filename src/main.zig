@@ -1,12 +1,11 @@
 const std = @import("std");
 const clap = @import("clap");
 const sokol = @import("sokol");
-const raw = @import("raw/raw.zig");
-const GameData = @import("raw/GameData.zig");
 const time = @import("common/time.zig");
 const gfx = @import("common/gfx.zig");
 const prof = @import("common/prof.zig");
 const audio = @import("common/audio.zig");
+const raw = @import("raw/raw.zig");
 const ui = @import("ui/ui.zig");
 const slog = sokol.log;
 const sapp = sokol.app;
@@ -39,19 +38,19 @@ const state = struct {
     const GameOptions = struct {
         part_num: u16 = 16001,
         use_ega: bool = false,
-        lang: raw.GameLang = .us,
+        lang: raw.game.GameLang = .us,
         enable_protection: bool = false,
-        data: ?GameData = null,
+        data: ?raw.GameData = null,
     };
 
     var ready: bool = false;
     var data: raw.GameData = .{};
     var options: GameOptions = .{};
-    var game: raw.Game = undefined;
+    var game: raw.game.Game = undefined;
     var frame_time_us: u32 = 0;
 };
 
-pub fn defaultPCDemoGameData() GameData {
+pub fn defaultPCDemoGameData() raw.GameData {
     return .{
         .banks = .{
             .bank0D = @embedFile("data/pc_demo/BANK0D"),
@@ -69,7 +68,7 @@ export fn init() void {
     audio.init(.{});
     prof.init();
     time.init();
-    raw.gameInit(&state.game, .{
+    raw.game.gameInit(&state.game, .{
         .audio = .{
             .sample_rate = audio.sampleRate(),
             .callback = audio.push,
@@ -88,7 +87,7 @@ export fn init() void {
     // initialize sokol-gfx
     gfx.init(.{
         .border = gfx.DEFAULT_BORDER,
-        .display = raw.displayInfo(&state.game),
+        .display = raw.game.displayInfo(&state.game),
         .pixel_aspect = .{ .width = 2, .height = 2 },
     });
     ui.init(.{ .game = &state.game });
@@ -101,11 +100,11 @@ export fn frame() void {
     ui.draw();
 
     time.emuStart();
-    raw.gameExec(&state.game, state.frame_time_us / 1000) catch @panic("gameexec failed");
+    raw.game.gameExec(&state.game, state.frame_time_us / 1000) catch @panic("gameexec failed");
     prof.pushMicroSeconds(.EMU, time.emuEnd());
 
     gfx.draw(.{
-        .display = raw.displayInfo(&state.game),
+        .display = raw.game.displayInfo(&state.game),
         .status = .{
             .frame_stats = prof.stats(.FRAME),
             .emu_stats = prof.stats(.EMU),
@@ -125,11 +124,11 @@ export fn event(ev: [*c]const sapp.Event) void {
         .CHAR => {
             const c = ev.*.char_code;
             if ((c > 0x20) and (c < 0x7F)) {
-                raw.gameCharPressed(&state.game, @truncate(c));
+                raw.game.gameCharPressed(&state.game, @truncate(c));
             }
         },
         .KEY_DOWN, .KEY_UP => {
-            const input: ?raw.GameInput = switch (ev.*.key_code) {
+            const input: ?raw.game.GameInput = switch (ev.*.key_code) {
                 .LEFT => .left,
                 .RIGHT => .right,
                 .DOWN => .down,
@@ -143,7 +142,7 @@ export fn event(ev: [*c]const sapp.Event) void {
                 else => null,
             };
             if (input) |key| {
-                const gameKeyFunc = if (ev.*.type == .KEY_DOWN) &raw.gameKeyDown else &raw.gameKeyUp;
+                const gameKeyFunc = if (ev.*.type == .KEY_DOWN) &raw.game.gameKeyDown else &raw.game.gameKeyUp;
                 gameKeyFunc(&state.game, key);
             }
         },
@@ -193,7 +192,7 @@ pub fn main() void {
 
     if (res.positionals.len > 0) {
         const path = res.positionals[0];
-        state.options.data = GameData.readData(path);
+        state.options.data = raw.GameData.readData(path);
     }
 
     sapp.run(.{
