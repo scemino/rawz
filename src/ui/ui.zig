@@ -7,9 +7,9 @@ const sg = sokol.gfx;
 const ig = @import("cimgui");
 const raw = @import("../raw/raw.zig");
 const Disasm = @import("Disasm.zig");
+const Video = @import("Video.zig");
 const raw_dasm = @import("ui_rawdasm.zig");
-
-const UI_DELETE_STACK_SIZE = 32;
+const util = @import("ui_util.zig");
 
 const Desc = struct {
     game: *raw.game.Game,
@@ -31,29 +31,13 @@ const Res = struct {
     stats: [8]ResStat = [1]ResStat{.{}} ** 8, // stats for each resource types
 };
 
-const Video = struct {
-    x: f32 = 0.0,
-    y: f32 = 0.0,
-    w: f32 = 0.0,
-    h: f32 = 0.0,
-    open: bool = true,
-
-    tex_fb: [4]?*anyopaque = [1]?*anyopaque{null} ** 4,
-    pixel_buffer: [raw.GAME_WIDTH * raw.GAME_HEIGHT]u32 = [1]u32{0} ** (raw.GAME_WIDTH * raw.GAME_HEIGHT),
-};
-
 const state = struct {
     var game: *raw.game.Game = undefined;
     var res: Res = .{};
     var video: Video = .{};
     var dasm: Disasm = undefined;
     var layer_names: [8][:0]const u8 = undefined;
-    const DeleteStack = struct {
-        images: [UI_DELETE_STACK_SIZE]simgui.Image = [1]simgui.Image{.{}} ** UI_DELETE_STACK_SIZE,
-        cur_slot: usize = 0,
-    };
     var nearest_sampler: sg.Sampler = .{};
-    var delete_stack: DeleteStack = .{};
 };
 
 pub fn init(desc: Desc) void {
@@ -69,7 +53,7 @@ pub fn init(desc: Desc) void {
         .wrap_v = sg.Wrap.CLAMP_TO_EDGE,
     });
     for (0..4) |i| {
-        state.video.tex_fb[i] = createTexture(raw.GAME_WIDTH, raw.GAME_HEIGHT);
+        state.video.tex_fb[i] = util.createTexture(raw.GAME_WIDTH, raw.GAME_HEIGHT, state.nearest_sampler);
     }
     updateStats();
     var da_desc: Disasm.Desc = .{
@@ -80,6 +64,7 @@ pub fn init(desc: Desc) void {
     };
     da_desc.layers[0] = "Script";
     state.dasm = Disasm.init(da_desc);
+    state.video = Video.init(.{ .game = desc.game });
 }
 
 pub fn ui_dasm_op(layer: usize, pc: u16, in_cb: Disasm.ui_dasm_input_t, out_cb: Disasm.ui_dasm_output_t, user_data: ?*anyopaque) u16 {
@@ -98,7 +83,7 @@ pub fn draw() void {
 
     drawMenu();
     drawRes();
-    drawVideo();
+    state.video.draw();
     state.dasm.draw();
 }
 
@@ -108,7 +93,7 @@ pub fn handleEvent(ev: [*c]const sapp.Event) bool {
 
 pub fn shutdown() void {
     for (0..4) |i| {
-        destroyTexture(state.video.tex_fb[i]);
+        util.destroyTexture(state.video.tex_fb[i]);
     }
     simgui.shutdown();
     state.dasm.deinit();
@@ -128,42 +113,6 @@ fn _ui_raw_dasm_read(layer: usize, addr: u16, valid: *bool, user_data: ?*anyopaq
 fn _ui_raw_getstr(id: u16, user_data: ?*anyopaque) []const u8 {
     _ = user_data;
     return state.game.strings_table.find(id);
-}
-
-fn drawVideo() void {
-    if (!state.video.open) return;
-    ig.igSetNextWindowPos(.{ .x = 10, .y = 10 }, ig.ImGuiCond_Once, .{ .x = 0, .y = 0 });
-    ig.igSetNextWindowSize(.{ .x = 400, .y = 100 }, ig.ImGuiCond_Once);
-    _ = ig.igBegin("Video", &state.video.open, ig.ImGuiWindowFlags_None);
-
-    // palette
-    if (ig.igCollapsingHeader_TreeNodeFlags("Palette", ig.ImGuiTreeNodeFlags_DefaultOpen)) {
-        inline for (0..16) |i| {
-            const color = ig.ImColor_ImColor_U32(@as(c_uint, state.game.gfx.palette[i]));
-            ig.igPushID_Int(@intCast(i));
-            _ = ig.igColorEdit3("", &color.*.Value.x, ig.ImGuiColorEditFlags_NoInputs);
-            ig.igPopID();
-            if (i != 7) {
-                ig.igSameLine(0, -1);
-            }
-        }
-        ig.igNewLine();
-    }
-
-    // frame buffers
-    if (ig.igCollapsingHeader_TreeNodeFlags("Frame buffers", ig.ImGuiTreeNodeFlags_DefaultOpen)) {
-        ig.igText("Current page: %d", @as(u8, @intCast(state.game.video.buffers[0])));
-        gameUpdateFbs();
-        inline for (0..4) |i| {
-            const border_color = if (state.game.video.buffers[0] == i) ig.ImColor_ImColor_U32(0xFF30FF30) else ig.ImColor_ImColor_Int(1, 1, 1, 1);
-            ig.igImage(state.video.tex_fb[i], .{ .x = raw.GAME_WIDTH, .y = raw.GAME_HEIGHT }, .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 1 }, .{ .x = 1, .y = 1, .z = 1, .w = 1 }, border_color.*.Value);
-            if (i != 1) {
-                ig.igSameLine(0, -1);
-            }
-        }
-    }
-
-    ig.igEnd();
 }
 
 fn convertSize(buf: []u8, size: u32) [*c]const u8 {
@@ -282,15 +231,6 @@ pub fn drawRes() void {
     ig.igEnd();
 }
 
-fn gameUpdateFbs() void {
-    for (0..4) |i| {
-        for (0..raw.GAME_WIDTH * raw.GAME_HEIGHT) |j| {
-            state.video.pixel_buffer[j] = state.game.gfx.palette[state.game.gfx.fbs[i].buffer[j]];
-        }
-        updateTexture(state.video.tex_fb[i], &state.video.pixel_buffer, raw.GAME_WIDTH * raw.GAME_HEIGHT * @sizeOf(u32));
-    }
-}
-
 fn updateStats() void {
     for (0..state.game.res.num_mem_list) |i| {
         const res = &state.game.res.mem_list[i];
@@ -307,31 +247,4 @@ fn hsv(h: f32, s: f32, v: f32) ig.ImColor {
     var color: ig.ImColor = undefined;
     ig.ImColor_HSV(&color, h, s, v, 1.0);
     return color;
-}
-
-fn createTexture(w: i32, h: i32) ?*anyopaque {
-    return simgui.imtextureid(simgui.makeImage(.{
-        .image = sg.makeImage(.{
-            .width = w,
-            .height = h,
-            .usage = sg.Usage.STREAM,
-            .pixel_format = sg.PixelFormat.RGBA8,
-        }),
-        .sampler = state.nearest_sampler,
-    }));
-}
-
-fn updateTexture(h: ?*anyopaque, data: ?*anyopaque, data_byte_size: usize) void {
-    const img = simgui.imageFromImtextureid(h);
-    const desc = simgui.queryImageDesc(img);
-    var img_data: sg.ImageData = .{};
-    img_data.subimage[0][0] = .{ .ptr = data, .size = data_byte_size };
-    sg.updateImage(desc.image, img_data);
-}
-
-fn destroyTexture(h: ?*anyopaque) void {
-    if (state.delete_stack.cur_slot < UI_DELETE_STACK_SIZE) {
-        state.delete_stack.images[state.delete_stack.cur_slot] = simgui.imageFromImtextureid(h);
-        state.delete_stack.cur_slot += 1;
-    }
 }
