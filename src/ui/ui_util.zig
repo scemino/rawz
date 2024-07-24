@@ -57,3 +57,25 @@ pub fn updateTexture(h: ?*anyopaque, data: ?*anyopaque, data_byte_size: usize) v
     img_data.subimage[0][0] = .{ .ptr = data, .size = data_byte_size };
     sg.updateImage(desc.image, img_data);
 }
+
+pub fn hsv(h: f32, s: f32, v: f32) ig.ImColor {
+    var color: ig.ImColor = undefined;
+    ig.ImColor_HSV(&color, h, s, v, 1.0);
+    return color;
+}
+
+pub fn convertSize(buf: []u8, size: u32) [*c]const u8 {
+    const suffix = [_][]const u8{ "B", "KB", "MB", "GB", "TB" };
+    var s = size;
+    var dblBytes: f32 = @floatFromInt(size);
+    var i: usize = 0;
+    if (s > 1024) {
+        while ((s / 1024) > 0 and (i < suffix.len)) {
+            dblBytes = @as(f32, @floatFromInt(s)) / 1024.0;
+            s = s / 1024;
+            i += 1;
+        }
+    }
+    const buf2 = std.fmt.bufPrintZ(buf, "{d:.2} {s}", .{ dblBytes, suffix[i] }) catch @panic("failed to format");
+    return @ptrCast(buf2);
+}
