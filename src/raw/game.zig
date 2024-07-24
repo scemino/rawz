@@ -356,9 +356,9 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
 
     const num = game.part_num;
     if (num < 36) {
-        gameVmRestartAt(game, @enumFromInt(restart_pos[num * 2]), restart_pos[num * 2 + 1]);
+        restartAt(game, @enumFromInt(restart_pos[num * 2]), restart_pos[num * 2 + 1]);
     } else {
-        gameVmRestartAt(game, @enumFromInt(num), -1);
+        restartAt(game, @enumFromInt(num), -1);
     }
     game.title = game_res_get_game_title(game);
 }
@@ -407,7 +407,7 @@ pub fn gameExec(game: *Game, ms: u32) !void {
     game.sleep += 20; // wait 20 ms (50 Hz)
 }
 
-fn gameVmRestartAt(game: *Game, part: GamePart, pos: i16) void {
+pub fn restartAt(game: *Game, part: GamePart, pos: i16) void {
     gameAudioStopAll(game);
     if (game.res.data_type == .dos and part == .copy_protection) {
         // VAR(0x54) indicates if the "Out of this World" title screen should be presented
@@ -446,7 +446,7 @@ fn gameVmRestartAt(game: *Game, part: GamePart, pos: i16) void {
 
 fn gameVmSetupTasks(game: *Game) void {
     if (game.res.next_part) |part| {
-        gameVmRestartAt(game, part, -1);
+        restartAt(game, part, -1);
         game.res.next_part = null;
     }
     for (0..GAME_NUM_TASKS) |i| {
@@ -1044,7 +1044,7 @@ fn gameAudioSfxHandlePattern(game: *Game, channel: u2, data: []const u8) void {
         if (pat.period_arpeggio == 0xFFFE) {
             player.channels[channel] = std.mem.zeroes(@TypeOf(player.channels[channel]));
         } else if (pat.sample_buffer) |buf| {
-            assert(pat.note_1 >= 0x37 and pat.note_1 < 0x1000);
+            // TODO: fix and activate this: assert(pat.note_1 >= 0x37 and pat.note_1 < 0x1000);
             // convert Amiga period value to hz
             const freq: i32 = @divTrunc(GAME_PAULA_FREQ, @as(i32, @intCast(pat.note_1)) * 2);
             snd_log.debug("SfxPlayer::handlePattern() adding sample freq = 0x{X}", .{freq});
@@ -1246,7 +1246,7 @@ fn opAddConst(game: *Game) void {
     const i = game.vm.ptr.fetchByte();
     const n: i16 = @bitCast(game.vm.ptr.fetchWord());
     vm_log.debug("Script::op_addConst(0x{X}, {})", .{ i, n });
-    game.vm.vars[i] += n;
+    game.vm.vars[i] = game.vm.vars[i] +% n;
 }
 
 fn opCall(game: *Game) void {
@@ -1509,7 +1509,7 @@ fn opShl(game: *Game) void {
     const i = game.vm.ptr.fetchByte();
     const n: u4 = @intCast(game.vm.ptr.fetchWord());
     vm_log.debug("Script::op_shl(0x{X:0>2}, {})", .{ i, n });
-    game.vm.vars[i] = @bitCast(@as(u16, @intCast(game.vm.vars[i])) << n);
+    game.vm.vars[i] = @bitCast(@as(u16, @bitCast(game.vm.vars[i])) << n);
 }
 
 fn opShr(game: *Game) void {

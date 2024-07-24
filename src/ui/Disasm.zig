@@ -250,7 +250,7 @@ fn _ui_dasm_draw_disasm(win: *Self) void {
 
     // skip hidden lines
     win.cur_addr = win.start_addr;
-    const min_line: usize = @min(@as(usize, @intCast(clipper.DisplayStart)), UI_DASM_NUM_LINES);
+    const min_line: usize = @max(0, @min(@as(isize, @intCast(clipper.DisplayStart)), UI_DASM_NUM_LINES));
     for (0..min_line) |_| {
         _ui_dasm_disasm(win);
     }

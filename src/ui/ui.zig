@@ -22,7 +22,6 @@ const state = struct {
     var video: Video = .{};
     var dasm: Disasm = undefined;
     var layer_names: [8][:0]const u8 = undefined;
-    var nearest_sampler: sg.Sampler = .{};
 };
 
 pub fn init(desc: Desc) void {
@@ -31,25 +30,23 @@ pub fn init(desc: Desc) void {
         .logger = .{ .func = slog.func },
     });
     state.game = desc.game;
-    state.nearest_sampler = sg.makeSampler(.{
-        .min_filter = sg.Filter.NEAREST,
-        .mag_filter = sg.Filter.NEAREST,
-        .wrap_u = sg.Wrap.CLAMP_TO_EDGE,
-        .wrap_v = sg.Wrap.CLAMP_TO_EDGE,
-    });
-    for (0..4) |i| {
-        state.video.tex_fb[i] = util.createTexture(raw.GAME_WIDTH, raw.GAME_HEIGHT, state.nearest_sampler);
-    }
-    var da_desc: Disasm.Desc = .{
+    state.dasm = Disasm.init(.{
         .title = "Disassembler",
-        .read_cb = ui_raw_dasm_read,
-        .dasm_op_cb = ui_dasm_op,
+        .y = 40,
+        .read_cb = readCode,
+        .dasm_op_cb = dasmOp,
         .user_data = desc.game,
-    };
-    da_desc.layers[0] = "Script";
-    state.dasm = Disasm.init(da_desc);
-    state.video = Video.init(.{ .game = desc.game });
-    state.res = Res.init(.{ .game = desc.game });
+    });
+    state.video = Video.init(.{
+        .game = desc.game,
+        .x = 120,
+        .y = 40,
+    });
+    state.res = Res.init(.{
+        .game = desc.game,
+        .x = 120,
+        .y = 120,
+    });
 }
 
 pub fn draw() void {
@@ -72,19 +69,17 @@ pub fn handleEvent(ev: [*c]const sapp.Event) bool {
 }
 
 pub fn shutdown() void {
-    for (0..4) |i| {
-        util.destroyTexture(state.video.tex_fb[i]);
-    }
-    simgui.shutdown();
+    state.video.deinit();
     state.dasm.deinit();
+    simgui.shutdown();
 }
 
-fn ui_dasm_op(layer: usize, pc: u16, in_cb: Disasm.ui_dasm_input_t, out_cb: Disasm.ui_dasm_output_t, user_data: ?*anyopaque) u16 {
+fn dasmOp(layer: usize, pc: u16, in_cb: Disasm.ui_dasm_input_t, out_cb: Disasm.ui_dasm_output_t, user_data: ?*anyopaque) u16 {
     _ = layer;
-    return raw_dasm.disasmOp(pc, in_cb, out_cb, ui_raw_getstr, user_data);
+    return raw_dasm.disasmOp(pc, in_cb, out_cb, getStr, user_data);
 }
 
-fn ui_raw_dasm_read(layer: usize, addr: u16, valid: *bool, user_data: ?*anyopaque) u8 {
+fn readCode(layer: usize, addr: u16, valid: *bool, user_data: ?*anyopaque) u8 {
     _ = layer;
     _ = user_data;
     valid.* = false;
@@ -95,13 +90,27 @@ fn ui_raw_dasm_read(layer: usize, addr: u16, valid: *bool, user_data: ?*anyopaqu
     return 0;
 }
 
-fn ui_raw_getstr(id: u16, user_data: ?*anyopaque) []const u8 {
+fn getStr(id: u16, user_data: ?*anyopaque) []const u8 {
     _ = user_data;
     return state.game.strings_table.find(id);
 }
 
 fn drawMenu() void {
     if (ig.igBeginMainMenuBar()) {
+        if (ig.igBeginMenu("System", true)) {
+            if (ig.igBeginMenu("Restart at", true)) {
+                const parts = [_]raw.game.GamePart{ .intro, .water, .prison, .cite, .arene, .luxe, .final, .password, .copy_protection };
+                const part_names = [_][:0]const u8{ "Intro", "Water", "Prison", "Cite", "Arene", "Luxe", "Final", "Password", "Copy Protection" };
+                for (parts, 0..) |part, i| {
+                    var part_selected = state.game.res.current_part == part;
+                    if (ig.igMenuItem_BoolPtr(part_names[i], 0, &part_selected, true)) {
+                        raw.game.restartAt(state.game, part, -1);
+                    }
+                }
+                ig.igEndMenu();
+            }
+            ig.igEndMenu();
+        }
         if (ig.igBeginMenu("Info", true)) {
             _ = ig.igMenuItem_BoolPtr("Video", 0, &state.video.open, true);
             _ = ig.igMenuItem_BoolPtr("Resource", 0, &state.res.open, true);

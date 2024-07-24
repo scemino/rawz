@@ -20,15 +20,27 @@ const ResStat = struct {
 
 const Desc = struct {
     game: *raw.game.Game,
+    x: f32 = 0.0,
+    y: f32 = 0.0, // initial window pos
+    w: f32 = 200.0,
+    h: f32 = 200.0, // initial window size or 0 for default size
 };
 
 pub fn init(desc: Desc) Self {
-    return .{ .game = desc.game };
+    var self = Self{
+        .game = desc.game,
+        .x = desc.x,
+        .y = desc.y,
+        .w = desc.w,
+        .h = desc.h,
+    };
+    self.updateStats();
+    return self;
 }
 
 pub fn draw(self: *Self) void {
     if (!self.open) return;
-    self.update();
+
     const labels = [_][*c]const u8{ "Sound", "Music", "Bitmap", "Palette", "Byte code", "Shape", "Bank" };
     ig.igSetNextWindowPos(.{ .x = self.x, .y = self.y }, ig.ImGuiCond_Once, .{});
     ig.igSetNextWindowSize(.{ .x = self.w, .y = self.h }, ig.ImGuiCond_Once);
@@ -116,7 +128,7 @@ pub fn draw(self: *Self) void {
     ig.igEnd();
 }
 
-fn update(self: *Self) void {
+fn updateStats(self: *Self) void {
     for (0..self.game.res.num_mem_list) |i| {
         const res = &self.game.res.mem_list[i];
         if (res.status == .uninit) break;
