@@ -68,7 +68,7 @@ const period_table = [_]u16{ 1076, 1016, 960, 906, 856, 808, 762, 720, 678, 640,
 const GAME_TITLE_EU = "Another World";
 const GAME_TITLE_US = "Out Of This World";
 
-const GameMemEntry = struct {
+pub const GameMemEntry = struct {
     status: GameResStatus, // 0x0
     type: GameResType, // 0x1
     buf_ptr: []u8, // 0x2
@@ -636,7 +636,7 @@ fn gameResInvalidateAll(game: *Game) void {
     game.video.current_pal = 0xFF;
 }
 
-fn gameResReadBank(game: *Game, me: *const GameMemEntry, dst_buf: []u8) bool {
+pub fn gameResReadBank(game: *Game, me: *const GameMemEntry, dst_buf: []u8) bool {
     if (me.bank_num > 0xd)
         return false;
 

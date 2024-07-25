@@ -17,7 +17,7 @@ const Self = @This();
 
 const video_log = std.log.scoped(.video);
 
-const palette_ega = [_]u8{
+pub const palette_ega = [_]u8{
     0x00, 0x00, 0x00, // black #0
     0x00, 0x00, 0xAA, // blue #1
     0x00, 0xAA, 0x00, // green #2
