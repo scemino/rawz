@@ -23,7 +23,7 @@ const GAME_NUM_TASKS = 64;
 
 const GAME_MIX_FREQ = 22050;
 const GAME_MIX_BUF_SIZE = 4096 * 8;
-const GAME_MIX_CHANNELS = 4;
+const GAME_MIX_CHANNELS = 4 + 1; // 4 channels + 1 for debug
 const GAME_SFX_NUM_CHANNELS = 4;
 const GAME_MAX_AUDIO_SAMPLES = 2048 * 16; // max number of audio samples in internal sample buffer
 
@@ -173,6 +173,7 @@ const GameAudioChannel = struct {
     loop_len: u32 = 0,
     loop_pos: u32 = 0,
     volume: i32 = 0,
+    mute: bool = false,
 };
 
 const GameAudioDesc = struct {
@@ -230,6 +231,7 @@ pub const Game = struct {
         samples: [GAME_MIX_BUF_SIZE]i16,
         channels: [GAME_MIX_CHANNELS]GameAudioChannel,
         sfx_player: GameAudioSfxPlayer,
+        mute_music: bool,
         callback: GameAudioCallback,
     };
 
@@ -861,7 +863,7 @@ fn gameAudioSfxSetEventsDelay(game: *Game, delay: u16) void {
     game.audio.sfx_player.delay = delay;
 }
 
-fn gameAudioStopSound(game: *Game, channel: u2) void {
+fn gameAudioStopSound(game: *Game, channel: u3) void {
     snd_log.debug("Mixer::stopChannel({})", .{channel});
     game.audio.channels[channel].data = null;
 }
@@ -933,7 +935,7 @@ fn getSoundFreq(period: u8) i32 {
     return @divTrunc(GAME_PAULA_FREQ, @as(i32, @intCast(period_table[period])) * 2);
 }
 
-fn gameAudioPlaySoundRaw(game: *Game, channel: u2, data: []const u8, freq: i32, volume: u8) void {
+fn gameAudioPlaySoundRaw(game: *Game, channel: u3, data: []const u8, freq: i32, volume: u8) void {
     const chan = &game.audio.channels[channel];
     gameAudioInitRaw(chan, data, freq, volume, GAME_MIX_FREQ);
 }
@@ -963,7 +965,8 @@ fn gameAudioMixRaw(chan: *GameAudioChannel, sample: *i16) void {
             chan.data = null;
             return;
         }
-        sample.* = mixi16(sample.*, @divTrunc(@as(i32, toRawi16(data[pos] ^ 0x80)) * chan.volume, 64));
+        const vol = if (chan.mute) 0 else chan.volume;
+        sample.* = mixi16(sample.*, @divTrunc(@as(i32, toRawi16(data[pos] ^ 0x80)) * vol, 64));
     }
 }
 
@@ -1133,7 +1136,7 @@ fn gameAudioSfxMixSamples(game: *Game, buffer: []i16) void {
 
 fn gameAudioSfxReadSamples(game: *Game, buf: []i16) void {
     const player = &game.audio.sfx_player;
-    if (player.delay != 0) {
+    if (player.delay != 0 and !game.audio.mute_music) {
         gameAudioSfxMixSamples(game, buf);
     }
 }
@@ -1185,10 +1188,25 @@ pub fn gameCharPressed(game: *Game, c: u8) void {
     game.input.last_char = c;
 }
 
-fn sndPlaySound(game: *Game, resNum: u16, frequency: u8, volume: u8, channel: u2) void {
+pub fn debugSndPlaySound(game: *Game, buf: []const u8, frequency: u8, volume: u8) void {
     var vol = volume;
     var freq = frequency;
-    var chan = channel;
+    if (vol == 0) {
+        gameAudioStopSound(game, 4);
+        return;
+    }
+    if (vol > 63) {
+        vol = 63;
+    }
+    if (freq > 39) {
+        freq = 39;
+    }
+    gameAudioPlaySoundRaw(game, 4, buf, getSoundFreq(freq), vol);
+}
+
+pub fn sndPlaySound(game: *Game, resNum: u16, frequency: u8, volume: u8, chan: u3) void {
+    var vol = volume;
+    var freq = frequency;
     snd_log.debug("snd_playSound(0x{X}, {}, {}, {})", .{ resNum, freq, vol, chan });
     if (vol == 0) {
         gameAudioStopSound(game, chan);
@@ -1200,7 +1218,6 @@ fn sndPlaySound(game: *Game, resNum: u16, frequency: u8, volume: u8, channel: u2
     if (freq > 39) {
         freq = 39;
     }
-    chan &= 3;
     const me = &game.res.mem_list[resNum];
     if (me.status == .loaded) {
         gameAudioPlaySoundRaw(game, chan, me.buf_ptr, getSoundFreq(freq), vol);

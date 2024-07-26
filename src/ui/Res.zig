@@ -12,11 +12,17 @@ const PreviewDataKind = enum {
     palette,
     /// Represents bitmap data
     bitmap,
+    /// Represents sound data
+    sound,
 };
 
 const PreviewData = union(PreviewDataKind) {
     palette: [16 * 64]ig.ImVec4,
     bitmap: void,
+    sound: struct {
+        view_sound: []const f32,
+        data: []const u8,
+    },
 };
 
 x: f32 = 0.0,
@@ -28,6 +34,8 @@ filters: [7]bool = [1]bool{false} ** 7, // filter for each resource types
 stats: [8]ResStat = [1]ResStat{.{}} ** 8, // stats for each resource types
 select_index: usize = 0,
 preview_data: ?PreviewData = null,
+snd_frequency: c_int = 15,
+snd_volume: c_int = 32,
 use_ega: bool = false,
 dirty: bool = false,
 game: *raw.game.Game,
@@ -87,6 +95,7 @@ fn drawPreview(self: *Self) void {
     ig.igSetNextWindowSize(.{ .x = self.w, .y = self.h }, ig.ImGuiCond_Once);
     if (ig.igBegin("Preview", &self.open, ig.ImGuiWindowFlags_None)) {
         const item = self.game.res.mem_list[self.select_index];
+        // update selected data
         if (self.dirty) {
             self.dirty = false;
             switch (item.type) {
@@ -102,13 +111,24 @@ fn drawPreview(self: *Self) void {
                         self.preview_data = PreviewData{ .bitmap = {} };
                     }
                 },
+                .sound => {
+                    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+                    const buf = self.readResItem(item, gpa.allocator());
+                    var buf_audio = gpa.allocator().alloc(f32, buf.len) catch @panic("failed to allocate");
+                    for (buf, 0..) |value, i| {
+                        buf_audio[i] = @as(f32, @floatFromInt(@as(i8, @bitCast(value)))) / 128.0;
+                    }
+                    self.preview_data = PreviewData{ .sound = .{ .data = buf, .view_sound = buf_audio } };
+                },
                 else => {},
             }
         }
+        // draw data
         if (self.preview_data) |preview_data| {
             switch (preview_data) {
                 .palette => self.drawPalette(),
                 .bitmap => self.drawBitmap(),
+                .sound => self.drawSound(),
             }
         }
     }
@@ -344,4 +364,31 @@ fn decodeBmp(self: *Self, buf: []const u8, pal: [16]u32) void {
         temp_bitmap2[i] = pal[temp_bitmap[i]];
     }
     util.updateTexture(self.tex_fb, &temp_bitmap2, raw.GAME_WIDTH * raw.GAME_HEIGHT * @sizeOf(u32));
+}
+
+fn drawSound(self: *Self) void {
+    if (self.preview_data.?.sound.view_sound.len < 8) return;
+
+    const sample_buffer = self.preview_data.?.sound.view_sound[8..];
+    const cursor_pos = self.game.audio.channels[4].pos.getInt();
+    var area: ig.ImVec2 = undefined;
+    ig.igGetContentRegionAvail(&area);
+    var pos: ig.ImVec2 = undefined;
+    ig.igGetCursorScreenPos(&pos);
+    ig.igPlotLines_FloatPtr("##samples", sample_buffer.ptr, @intCast(sample_buffer.len), 0, 0, -1.0, 1.0, area, @sizeOf(f32));
+    const style = ig.igGetStyle().*;
+    const x0: f32 = pos.x + style.FramePadding.x;
+    const x1: f32 = pos.x + area.x - style.FramePadding.x;
+    const y0: f32 = pos.y + style.FramePadding.y;
+    const y1: f32 = pos.y + area.y - style.FramePadding.y;
+    const tx: f32 = @as(f32, @floatFromInt(cursor_pos)) / @as(f32, @floatFromInt(sample_buffer.len));
+    const x: f32 = x0 + (x1 - x0) * tx;
+    ig.ImDrawList_AddLine(ig.igGetWindowDrawList(), .{ .x = x, .y = y0 }, .{ .x = x, .y = y1 }, 0xFFFFFFFF, 1);
+
+    _ = ig.igDragInt("Volume", &self.snd_volume, 1, 0, 63, 0, ig.ImGuiSliderFlags_None);
+    const frequencies = "3326\u{0}3523\u{0}3728\u{0}3950\u{0}4181\u{0}4430\u{0}4697\u{0}4971\u{0}5279\u{0}5593\u{0}5926\u{0}6279\u{0}6653\u{0}7046\u{0}7457\u{0}7901\u{0}8363\u{0}8860\u{0}9395\u{0}9943\u{0}10559\u{0}11186\u{0}11852\u{0}12559\u{0}13306\u{0}14092\u{0}14914\u{0}15838\u{0}16726\u{0}17720\u{0}18839\u{0}19886\u{0}21056\u{0}22372\u{0}23705\u{0}25031\u{0}26515\u{0}28185\u{0}29829\u{0}\u{0}";
+    _ = ig.igCombo_Str("Frequency", &self.snd_frequency, frequencies, 0);
+    if (ig.igButton("Play", .{})) {
+        raw.game.debugSndPlaySound(self.game, self.preview_data.?.sound.data, @intCast(self.snd_frequency), @intCast(self.snd_volume));
+    }
 }

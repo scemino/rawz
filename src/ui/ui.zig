@@ -9,6 +9,7 @@ const raw = @import("../raw/raw.zig");
 const Disasm = @import("Disasm.zig");
 const Res = @import("Res.zig");
 const Video = @import("Video.zig");
+const Audio = @import("Audio.zig");
 const raw_dasm = @import("ui_rawdasm.zig");
 const util = @import("ui_util.zig");
 
@@ -20,6 +21,7 @@ const state = struct {
     var game: *raw.game.Game = undefined;
     var res: Res = undefined;
     var video: Video = .{};
+    var audio: Audio = .{};
     var dasm: Disasm = undefined;
     var layer_names: [8][:0]const u8 = undefined;
 };
@@ -47,6 +49,11 @@ pub fn init(desc: Desc) void {
         .x = 120,
         .y = 120,
     });
+    state.audio = Audio.init(.{
+        .game = desc.game,
+        .x = 220,
+        .y = 140,
+    });
 }
 
 pub fn draw() void {
@@ -62,6 +69,7 @@ pub fn draw() void {
     state.res.draw();
     state.video.draw();
     state.dasm.draw();
+    state.audio.draw();
 }
 
 pub fn handleEvent(ev: [*c]const sapp.Event) bool {
@@ -114,6 +122,7 @@ fn drawMenu() void {
         }
         if (ig.igBeginMenu("Info", true)) {
             _ = ig.igMenuItem_BoolPtr("Video", 0, &state.video.open, true);
+            _ = ig.igMenuItem_BoolPtr("Audio", 0, &state.audio.open, true);
             _ = ig.igMenuItem_BoolPtr("Resource", 0, &state.res.open, true);
             ig.igEndMenu();
         }
