@@ -118,7 +118,7 @@ fn readBanksFromDirectory(path: []const u8) Banks {
     if (!builtin.target.isWasm()) {
         var it = dir.iterate();
         while (it.next() catch @panic("Failed to iterate dir")) |entry| {
-            var out_str: [16]u8 = undefined;
+            var out_str: [256]u8 = undefined;
             if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..4]), "bank")) {
                 const index = std.fmt.parseInt(u8, entry.name[4..], 16) catch continue;
                 banks[index] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
