@@ -71,6 +71,7 @@ pub fn handleEvent(ev: [*c]const sapp.Event) bool {
 pub fn shutdown() void {
     state.video.deinit();
     state.dasm.deinit();
+    state.res.deinit();
     simgui.shutdown();
 }
 

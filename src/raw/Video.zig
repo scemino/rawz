@@ -337,7 +337,7 @@ fn decodeBitmap(src: []const u8, w: *u16, h: *u16, allocator: std.mem.Allocator)
     return dst;
 }
 
-fn decodeAtari(source: []const u8, dest: []u8) void {
+pub fn decodeAtari(source: []const u8, dest: []u8) void {
     var src = source;
     var dst = dest;
     for (0..Gfx.GAME_HEIGHT) |_| {
@@ -385,7 +385,7 @@ fn clut(source: []const u8, pal: []const u8, w: i32, h: i32, bpp: i32, flipY: bo
     }
 }
 
-fn decodeAmiga(src: []const u8, dst: []u8) void {
+pub fn decodeAmiga(src: []const u8, dst: []u8) void {
     const plane_size = Gfx.GAME_HEIGHT * Gfx.GAME_WIDTH / 8;
     var s: usize = 0;
     var d: usize = 0;
