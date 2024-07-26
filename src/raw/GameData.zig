@@ -122,9 +122,9 @@ fn readBanksFromDirectory(path: []const u8) Banks {
             if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..4]), "bank")) {
                 const index = std.fmt.parseInt(u8, entry.name[4..], 16) catch continue;
                 banks[index] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
-            } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..11]), "memlist.bin")) {
+            } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name), "memlist.bin")) {
                 banks[0xE] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
-            } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..9]), "demo3.joy")) {
+            } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name), "demo3.joy")) {
                 banks[0xF] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
             }
         }
