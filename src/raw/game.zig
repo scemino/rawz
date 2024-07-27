@@ -644,7 +644,11 @@ pub fn gameResReadBank(game: *Game, me: *const GameMemEntry, dst_buf: []u8) bool
 
     if (game.res.data.banks.get(me.bank_num - 1)) |bank| {
         if (me.packed_size != me.unpacked_size) {
-            return byteKillerUnpack(dst_buf[0..me.unpacked_size], bank[me.bank_pos..][0..me.packed_size]);
+            if (byteKillerUnpack(dst_buf[0..me.unpacked_size], bank[me.bank_pos..][0..me.packed_size])) {
+                return true;
+            } else |_| {
+                return false;
+            }
         } else {
             @memcpy(dst_buf[0..me.unpacked_size], bank[me.bank_pos..][0..me.packed_size]);
         }
