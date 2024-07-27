@@ -1,7 +1,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const ig = @import("cimgui");
-const util = @import("ui_util.zig");
+const util = @import("util.zig");
 
 // callback for reading a byte from memory
 const ui_dasm_read_t = *const fn (layer: usize, addr: u16, valid: *bool, user_data: ?*anyopaque) u8;

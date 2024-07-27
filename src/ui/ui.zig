@@ -10,8 +10,8 @@ const Disasm = @import("Disasm.zig");
 const Res = @import("Res.zig");
 const Video = @import("Video.zig");
 const Audio = @import("Audio.zig");
-const raw_dasm = @import("ui_rawdasm.zig");
-const util = @import("ui_util.zig");
+const raw_dasm = @import("rawdasm.zig");
+const util = @import("util.zig");
 
 const Desc = struct {
     game: *raw.game.Game,

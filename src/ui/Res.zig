@@ -2,7 +2,7 @@ const std = @import("std");
 const ig = @import("cimgui");
 const raw = @import("../raw/raw.zig");
 const Video = @import("../raw/Video.zig");
-const util = @import("ui_util.zig");
+const util = @import("util.zig");
 const sokol = @import("sokol");
 const sg = sokol.gfx;
 

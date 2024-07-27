@@ -65,17 +65,6 @@ pub fn hsv(h: f32, s: f32, v: f32) ig.ImColor {
 }
 
 pub fn convertSize(buf: []u8, size: u32) [*c]const u8 {
-    const suffix = [_][]const u8{ "B", "KB", "MB", "GB", "TB" };
-    var s = size;
-    var dblBytes: f32 = @floatFromInt(size);
-    var i: usize = 0;
-    if (s > 1024) {
-        while ((s / 1024) > 0 and (i < suffix.len)) {
-            dblBytes = @as(f32, @floatFromInt(s)) / 1024.0;
-            s = s / 1024;
-            i += 1;
-        }
-    }
-    const buf2 = std.fmt.bufPrintZ(buf, "{d:.2} {s}", .{ dblBytes, suffix[i] }) catch @panic("failed to format");
+    const buf2 = std.fmt.bufPrintZ(buf, "{:.2}", .{std.fmt.fmtIntSizeBin(size)}) catch @panic("failed to format");
     return @ptrCast(buf2);
 }

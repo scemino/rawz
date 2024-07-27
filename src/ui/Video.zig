@@ -1,6 +1,6 @@
 const raw = @import("../raw/raw.zig");
 const ig = @import("cimgui");
-const util = @import("ui_util.zig");
+const util = @import("util.zig");
 const sokol = @import("sokol");
 const sg = sokol.gfx;
 
