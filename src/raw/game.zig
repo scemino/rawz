@@ -1,5 +1,5 @@
 const std = @import("std");
-const audio = @import("sokol").audio;
+const saudio = @import("sokol").audio;
 const glue = @import("../common/glue.zig");
 const DemoJoy = @import("DemoJoy.zig");
 const Strings = @import("Strings.zig");
@@ -8,6 +8,7 @@ const GamePc = @import("GamePc.zig");
 const GameData = @import("GameData.zig");
 const Gfx = @import("Gfx.zig");
 const Video = @import("Video.zig");
+const audio = @import("audio.zig");
 pub const mementries = @import("mementries.zig");
 pub const util = @import("util.zig");
 pub const byteKillerUnpack = @import("unpack.zig").byteKillerUnpack;
@@ -20,12 +21,6 @@ const assert = std.debug.assert;
 const GAME_ENTRIES_COUNT = 146;
 const GAME_MEM_BLOCK_SIZE = 1 * 1024 * 1024;
 const GAME_NUM_TASKS = 64;
-
-const GAME_MIX_FREQ = 22050;
-const GAME_MIX_BUF_SIZE = 4096 * 8;
-const GAME_MIX_CHANNELS = 4 + 1; // 4 channels + 1 for debug
-const GAME_SFX_NUM_CHANNELS = 4;
-const GAME_MAX_AUDIO_SAMPLES = 2048 * 16; // max number of audio samples in internal sample buffer
 
 const GAME_INACTIVE_TASK = 0xFFFF;
 
@@ -44,8 +39,6 @@ const GAME_VAR_PAUSE_SLICES = 0xFF;
 
 const GAME_QUAD_STRIP_MAX_VERTICES = 70;
 
-const GAME_PAULA_FREQ: i32 = 7159092;
-
 const font = [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x10, 0x00, 0x28, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0x7E, 0x24, 0x24, 0x7E, 0x24, 0x00, 0x08, 0x3E, 0x48, 0x3C, 0x12, 0x7C, 0x10, 0x00, 0x42, 0xA4, 0x48, 0x10, 0x24, 0x4A, 0x84, 0x00, 0x60, 0x90, 0x90, 0x70, 0x8A, 0x84, 0x7A, 0x00, 0x08, 0x08, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x08, 0x10, 0x10, 0x10, 0x08, 0x06, 0x00, 0xC0, 0x20, 0x10, 0x10, 0x10, 0x20, 0xC0, 0x00, 0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00, 0x00, 0x10, 0x10, 0x7C, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x20, 0x00, 0x00, 0x00, 0x7C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x28, 0x10, 0x00, 0x00, 0x04, 0x08, 0x10, 0x20, 0x40, 0x00, 0x00, 0x78, 0x84, 0x8C, 0x94, 0xA4, 0xC4, 0x78, 0x00, 0x10, 0x30, 0x50, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x78, 0x84, 0x04, 0x08, 0x30, 0x40, 0xFC, 0x00, 0x78, 0x84, 0x04, 0x38, 0x04, 0x84, 0x78, 0x00, 0x08, 0x18, 0x28, 0x48, 0xFC, 0x08, 0x08, 0x00, 0xFC, 0x80, 0xF8, 0x04, 0x04, 0x84, 0x78, 0x00, 0x38, 0x40, 0x80, 0xF8, 0x84, 0x84, 0x78, 0x00, 0xFC, 0x04, 0x04, 0x08, 0x10, 0x20, 0x40, 0x00, 0x78, 0x84, 0x84, 0x78, 0x84, 0x84, 0x78, 0x00, 0x78, 0x84, 0x84, 0x7C, 0x04, 0x08, 0x70, 0x00, 0x00, 0x18, 0x18, 0x00, 0x00, 0x18, 0x18, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00, 0x10, 0x10, 0x60, 0x04, 0x08, 0x10, 0x20, 0x10, 0x08, 0x04, 0x00, 0x00, 0x00, 0xFE, 0x00, 0x00, 0xFE, 0x00, 0x00, 0x20, 0x10, 0x08, 0x04, 0x08, 0x10, 0x20, 0x00, 0x7C, 0x82, 0x02, 0x0C, 0x10, 0x00, 0x10, 0x00, 0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00, 0x78, 0x84, 0x84, 0xFC, 0x84, 0x84, 0x84, 0x00, 0xF8, 0x84, 0x84, 0xF8, 0x84, 0x84, 0xF8, 0x00, 0x78, 0x84, 0x80, 0x80, 0x80, 0x84, 0x78, 0x00, 0xF8, 0x84, 0x84, 0x84, 0x84, 0x84, 0xF8, 0x00, 0x7C, 0x40, 0x40, 0x78, 0x40, 0x40, 0x7C, 0x00, 0xFC, 0x80, 0x80, 0xF0, 0x80, 0x80, 0x80, 0x00, 0x7C, 0x80, 0x80, 0x8C, 0x84, 0x84, 0x7C, 0x00, 0x84, 0x84, 0x84, 0xFC, 0x84, 0x84, 0x84, 0x00, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x04, 0x04, 0x04, 0x04, 0x84, 0x84, 0x78, 0x00, 0x8C, 0x90, 0xA0, 0xE0, 0x90, 0x88, 0x84, 0x00, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0xFC, 0x00, 0x82, 0xC6, 0xAA, 0x92, 0x82, 0x82, 0x82, 0x00, 0x84, 0xC4, 0xA4, 0x94, 0x8C, 0x84, 0x84, 0x00, 0x78, 0x84, 0x84, 0x84, 0x84, 0x84, 0x78, 0x00, 0xF8, 0x84, 0x84, 0xF8, 0x80, 0x80, 0x80, 0x00, 0x78, 0x84, 0x84, 0x84, 0x84, 0x8C, 0x7C, 0x03, 0xF8, 0x84, 0x84, 0xF8, 0x90, 0x88, 0x84, 0x00, 0x78, 0x84, 0x80, 0x78, 0x04, 0x84, 0x78, 0x00, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x84, 0x84, 0x84, 0x84, 0x84, 0x84, 0x78, 0x00, 0x84, 0x84, 0x84, 0x84, 0x84, 0x48, 0x30, 0x00, 0x82, 0x82, 0x82, 0x82, 0x92, 0xAA, 0xC6, 0x00, 0x82, 0x44, 0x28, 0x10, 0x28, 0x44, 0x82, 0x00, 0x82, 0x44, 0x28, 0x10, 0x10, 0x10, 0x10, 0x00, 0xFC, 0x04, 0x08, 0x10, 0x20, 0x40, 0xFC, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFE, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x00, 0x00, 0x38, 0x04, 0x3C, 0x44, 0x3C, 0x00, 0x40, 0x40, 0x78, 0x44, 0x44, 0x44, 0x78, 0x00, 0x00, 0x00, 0x3C, 0x40, 0x40, 0x40, 0x3C, 0x00, 0x04, 0x04, 0x3C, 0x44, 0x44, 0x44, 0x3C, 0x00, 0x00, 0x00, 0x38, 0x44, 0x7C, 0x40, 0x3C, 0x00, 0x38, 0x44, 0x40, 0x60, 0x40, 0x40, 0x40, 0x00, 0x00, 0x00, 0x3C, 0x44, 0x44, 0x3C, 0x04, 0x78, 0x40, 0x40, 0x58, 0x64, 0x44, 0x44, 0x44, 0x00, 0x10, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x02, 0x00, 0x02, 0x02, 0x02, 0x02, 0x42, 0x3C, 0x40, 0x40, 0x46, 0x48, 0x70, 0x48, 0x46, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0xEC, 0x92, 0x92, 0x92, 0x92, 0x00, 0x00, 0x00, 0x78, 0x44, 0x44, 0x44, 0x44, 0x00, 0x00, 0x00, 0x38, 0x44, 0x44, 0x44, 0x38, 0x00, 0x00, 0x00, 0x78, 0x44, 0x44, 0x78, 0x40, 0x40, 0x00, 0x00, 0x3C, 0x44, 0x44, 0x3C, 0x04, 0x04, 0x00, 0x00, 0x4C, 0x70, 0x40, 0x40, 0x40, 0x00, 0x00, 0x00, 0x3C, 0x40, 0x38, 0x04, 0x78, 0x00, 0x10, 0x10, 0x3C, 0x10, 0x10, 0x10, 0x0C, 0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x44, 0x78, 0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x28, 0x10, 0x00, 0x00, 0x00, 0x82, 0x82, 0x92, 0xAA, 0xC6, 0x00, 0x00, 0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00, 0x00, 0x42, 0x22, 0x24, 0x18, 0x08, 0x30, 0x00, 0x00, 0x7C, 0x08, 0x10, 0x20, 0x7C, 0x00, 0x60, 0x90, 0x20, 0x40, 0xF0, 0x00, 0x00, 0x00, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0x00, 0x38, 0x44, 0xBA, 0xA2, 0xBA, 0x44, 0x38, 0x00, 0x38, 0x44, 0x82, 0x82, 0x44, 0x28, 0xEE, 0x00, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA };
 
 const restart_pos = [36 * 2]i16{ 16008, 0, 16001, 0, 16002, 10, 16002, 12, 16002, 14, 16003, 20, 16003, 24, 16003, 26, 16004, 30, 16004, 31, 16004, 32, 16004, 33, 16004, 34, 16004, 35, 16004, 36, 16004, 37, 16004, 38, 16004, 39, 16004, 40, 16004, 41, 16004, 42, 16004, 43, 16004, 44, 16004, 45, 16004, 46, 16004, 47, 16004, 48, 16004, 49, 16006, 64, 16006, 65, 16006, 66, 16006, 67, 16006, 68, 16005, 50, 16006, 60, 16007, 0 };
@@ -62,8 +55,6 @@ const mem_list_parts = [_][4]u8{
     .{ 0x7D, 0x7E, 0x7F, 0x00 }, // 16008 - password screen
     .{ 0x7D, 0x7E, 0x7F, 0x00 }, // 16009 - password screen
 };
-
-const period_table = [_]u16{ 1076, 1016, 960, 906, 856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453, 428, 404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226, 214, 202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113 };
 
 const GAME_TITLE_EU = "Another World";
 const GAME_TITLE_US = "Out Of This World";
@@ -119,68 +110,6 @@ const GameResStatus = enum(u8) {
     uninit = 0xff,
 };
 
-const GameAudioSfxInstrument = struct {
-    data: []u8,
-    volume: u16 = 0,
-};
-
-const GameAudioSfxPattern = struct {
-    note_1: u16 = 0,
-    note_2: u16 = 0,
-    sample_start: u16 = 0,
-    sample_buffer: ?[]u8 = null,
-    sample_len: u16 = 0,
-    loop_pos: u16 = 0,
-    loop_data: ?[]u8 = null,
-    loop_len: u16 = 0,
-    period_arpeggio: u16 = 0, // unused by Another World tracks
-    sample_volume: u16 = 0,
-};
-
-const GameAudioSfxModule = struct {
-    data: []const u8,
-    cur_pos: u16 = 0,
-    cur_order: u8 = 0,
-    num_order: u8 = 0,
-    order_table: []u8,
-    samples: [15]GameAudioSfxInstrument,
-};
-
-const GameAudioSfxChannel = struct {
-    sample_data: []u8,
-    sample_len: u16 = 0,
-    sample_loop_pos: u16 = 0,
-    sample_loop_len: u16 = 0,
-    volume: u16 = 0,
-    pos: GameFrac,
-};
-
-const GameAudioSfxPlayer = struct {
-    delay: u16 = 0,
-    res_num: u16 = 0,
-    sfx_mod: GameAudioSfxModule,
-    playing: bool = false,
-    samples_left: i32 = 0,
-    channels: [GAME_SFX_NUM_CHANNELS]GameAudioSfxChannel,
-};
-
-const GameAudioCallback = ?*const fn ([]const f32) void;
-
-const GameAudioChannel = struct {
-    data: ?[]const u8,
-    pos: GameFrac,
-    len: u32 = 0,
-    loop_len: u32 = 0,
-    loop_pos: u32 = 0,
-    volume: i32 = 0,
-    mute: bool = false,
-};
-
-const GameAudioDesc = struct {
-    callback: GameAudioCallback,
-    sample_rate: i32,
-};
-
 const GameInputDir = packed struct {
     left: bool = false,
     right: bool = false,
@@ -209,6 +138,11 @@ pub const GameRes = struct {
     lang: GameLang,
 };
 
+const GameAudioDesc = struct {
+    callback: audio.GameAudioCallback,
+    sample_rate: i32,
+};
+
 // configuration parameters for game_init()
 const GameDesc = struct {
     part_num: u16, // indicates the part number where the fame starts
@@ -226,15 +160,6 @@ const GameStrEntry = struct {
 };
 
 pub const Game = struct {
-    const Audio = struct {
-        sample_buffer: [GAME_MAX_AUDIO_SAMPLES]f32,
-        samples: [GAME_MIX_BUF_SIZE]i16,
-        channels: [GAME_MIX_CHANNELS]GameAudioChannel,
-        sfx_player: GameAudioSfxPlayer,
-        mute_music: bool,
-        callback: GameAudioCallback,
-    };
-
     const Vm = struct {
         const Task = struct {
             pc: u16,
@@ -277,7 +202,7 @@ pub const Game = struct {
 
     gfx: Gfx,
 
-    audio: Audio,
+    audio: audio.Audio,
     video: Video,
 
     vm: Vm,
@@ -320,7 +245,7 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
     // game.debug = desc.debug;
     game.part_num = desc.part_num;
     game.res.lang = desc.lang;
-    gameAudioInit(game, desc.audio.callback);
+    game.audio.init(desc.audio.callback);
 
     game.res.data = desc.data;
     if (game.res.data.demo3_joy) |demo| {
@@ -355,6 +280,8 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
     if (game.enable_protection and (game.res.data_type != .dos or game.res.has_password_screen)) {
         game.part_num = @intFromEnum(GamePart.copy_protection);
     }
+    game.audio.sfx_player.callback = &sfxPlayerCallback;
+    game.audio.sfx_player.callback_user_data = game;
 
     const num = game.part_num;
     if (num < 36) {
@@ -363,6 +290,11 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
         restartAt(game, @enumFromInt(num), -1);
     }
     game.title = game_res_get_game_title(game);
+}
+
+fn sfxPlayerCallback(user_data: ?*anyopaque, pat_note2: u16) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    game.vm.vars[GAME_VAR_MUSIC_SYNC] = @bitCast(pat_note2);
 }
 
 fn game_res_get_game_title(game: *Game) [:0]const u8 {
@@ -400,17 +332,17 @@ pub fn gameExec(game: *Game, ms: u32) !void {
     }
 
     //  audio
-    const num_frames: usize = @intCast(audio.saudio_expect());
+    const num_frames: usize = @intCast(saudio.saudio_expect());
     if (num_frames > 0) {
-        const num_samples: usize = num_frames * @as(usize, @intCast(audio.saudio_channels()));
-        gameAudioUpdate(game, num_samples);
+        const num_samples: usize = num_frames * @as(usize, @intCast(saudio.saudio_channels()));
+        game.audio.update(num_samples);
     }
 
     game.sleep += 20; // wait 20 ms (50 Hz)
 }
 
 pub fn restartAt(game: *Game, part: GamePart, pos: i16) void {
-    gameAudioStopAll(game);
+    game.audio.stopAll();
     if (game.res.data_type == .dos and part == .copy_protection) {
         // VAR(0x54) indicates if the "Out of this World" title screen should be presented
         //
@@ -831,336 +763,32 @@ fn gameResInvalidate(game: *Game) void {
     game.video.current_pal = 0xFF;
 }
 
-fn mixi16(sample1: i32, sample2: i32) i16 {
-    const sample: i32 = sample1 + sample2;
-    return @intCast(if (sample < -32768) -32768 else if (sample > 32767) 32767 else sample);
-}
-
-fn toRawi16(a: i32) i16 {
-    return @truncate(((a << 8) | a) - 32768);
-}
-
-fn toi16(a: i32) i16 {
-    if (a <= -128) {
-        return -32768;
+fn resSoundRead(user_data: ?*anyopaque, id: u16) ?[]const u8 {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    const me = &game.res.mem_list[id];
+    if (me.status == .loaded and me.type == .sound) {
+        return me.buf_ptr;
     }
-    if (a >= 127) {
-        return 32767;
-    }
-    const uns_1: u8 = @as(u8, @bitCast(@as(i8, @intCast(a)))) ^ 0x80;
-    const uns_2: u32 = @intCast(uns_1);
-    const i = @as(i32, @bitCast((uns_2 << 8) | uns_2)) - 32768;
-    return @intCast(i);
-}
-
-fn gameAudioInit(game: *Game, callback: GameAudioCallback) void {
-    game.audio.callback = callback;
-}
-
-fn gameAudioSfxStart(game: *Game) void {
-    snd_log.debug("SfxPlayer::start()", .{});
-    game.audio.sfx_player.sfx_mod.cur_pos = 0;
-}
-
-fn gameAudioSfxSetEventsDelay(game: *Game, delay: u16) void {
-    snd_log.debug("SfxPlayer::setEventsDelay({})", .{delay});
-    game.audio.sfx_player.delay = delay;
-}
-
-fn gameAudioStopSound(game: *Game, channel: u3) void {
-    snd_log.debug("Mixer::stopChannel({})", .{channel});
-    game.audio.channels[channel].data = null;
-}
-
-fn gamePlaySfxMusic(game: *Game) void {
-    var player = &game.audio.sfx_player;
-    player.playing = true;
-    player.samples_left = 0;
-    player.channels = std.mem.zeroes(@TypeOf(player.channels));
-}
-
-fn gameAudioInitRaw(chan: *GameAudioChannel, data: []const u8, freq: i32, volume: i32, mixingFreq: i32) void {
-    chan.data = data[8..];
-    chan.pos.reset(freq, mixingFreq);
-
-    const len: u32 = @as(u32, @intCast(util.readBeU16(data[0..]))) * 2;
-    chan.loop_len = @as(u32, @intCast(util.readBeU16(data[2..]))) * 2;
-    chan.loop_pos = if (chan.loop_len > 0) len else 0;
-    chan.len = len;
-
-    chan.volume = volume;
-}
-
-fn gameAudioSfxPrepareInstruments(game: *Game, buf: []const u8) void {
-    var p = buf;
-    var player = &game.audio.sfx_player;
-    player.sfx_mod.samples = std.mem.zeroes(@TypeOf(player.sfx_mod.samples));
-    for (&player.sfx_mod.samples, 0..) |*ins, i| {
-        const res_num = std.mem.readInt(u16, p[0..2], .big);
-        p = p[2..];
-        if (res_num != 0) {
-            ins.volume = util.readBeU16(p);
-            const me = &game.res.mem_list[res_num];
-            if (me.status == .loaded and me.type == .sound) {
-                ins.data = me.buf_ptr;
-                snd_log.debug("Loaded instrument 0x{X} n={} volume={}", .{ res_num, i, ins.volume });
-            } else {
-                snd_log.err("Error loading instrument 0x{X:0>2}", .{res_num});
-            }
-        }
-        p = p[2..]; // skip volume
-    }
+    return null;
 }
 
 fn gameAudioSfxLoadModule(game: *Game, res_num: u16, delay: u16, pos: u8) void {
     snd_log.debug("SfxPlayer::loadSfxModule(0x{X:0>2}, {}, {})", .{ res_num, delay, pos });
-    var player = &game.audio.sfx_player;
-    var me = &game.res.mem_list[res_num];
+    const me = &game.res.mem_list[res_num];
     if (me.status == .loaded and me.type == .music) {
-        player.sfx_mod = std.mem.zeroes(@TypeOf(player.sfx_mod));
-        player.sfx_mod.cur_order = pos;
-        player.sfx_mod.num_order = me.buf_ptr[0x3F];
-        snd_log.debug("SfxPlayer::loadSfxModule() curOrder = 0x{X} numOrder = 0x{X}", .{ player.sfx_mod.cur_order, player.sfx_mod.num_order });
-        player.sfx_mod.order_table = me.buf_ptr[0x40..];
-        if (delay == 0) {
-            player.delay = util.readBeU16(me.buf_ptr);
-        } else {
-            player.delay = delay;
-        }
-        player.sfx_mod.data = me.buf_ptr[0xC0..];
-        snd_log.debug("SfxPlayer::loadSfxModule() eventDelay = {} ms", .{player.delay});
-        gameAudioSfxPrepareInstruments(game, me.buf_ptr[2..]);
+        game.audio.sfx_player.sfxLoadModule(me.buf_ptr, delay, pos, game, resSoundRead);
     } else {
         snd_log.warn("SfxPlayer::loadSfxModule() ec=0xF8", .{});
     }
 }
 
-fn getSoundFreq(period: u8) i32 {
-    return @divTrunc(GAME_PAULA_FREQ, @as(i32, @intCast(period_table[period])) * 2);
-}
-
-fn gameAudioPlaySoundRaw(game: *Game, channel: u3, data: []const u8, freq: i32, volume: u8) void {
-    const chan = &game.audio.channels[channel];
-    gameAudioInitRaw(chan, data, freq, volume, GAME_MIX_FREQ);
-}
-
-fn gameAudioStopSfxMusic(game: *Game) void {
-    snd_log.debug("SfxPlayer::stop()", .{});
-    game.audio.sfx_player.playing = false;
-}
-
-fn gameAudioStopAll(game: *Game) void {
-    for (0..GAME_MIX_CHANNELS) |i| {
-        gameAudioStopSound(game, @intCast(i));
-    }
-    gameAudioStopSfxMusic(game);
-}
-
-fn gameAudioMixRaw(chan: *GameAudioChannel, sample: *i16) void {
-    if (chan.data) |data| {
-        var pos = chan.pos.getInt();
-        chan.pos.offset = @intCast(chan.pos.offset +% chan.pos.inc);
-        if (chan.loop_len != 0) {
-            if (pos >= chan.loop_pos + chan.loop_len) {
-                pos = chan.loop_pos;
-                chan.pos.offset = @intCast((chan.loop_pos << GameFrac.bits) +% chan.pos.inc);
-            }
-        } else if (pos >= chan.len) {
-            chan.data = null;
-            return;
-        }
-        const vol = if (chan.mute) 0 else chan.volume;
-        sample.* = mixi16(sample.*, @divTrunc(@as(i32, toRawi16(data[pos] ^ 0x80)) * vol, 64));
-    }
-}
-
-fn gameAudioMixChannels(game: *Game, samples: []i16) void {
-    var smp = samples;
-    // TODO: kAmigaStereoChannels ?
-    //     if (kAmigaStereoChannels) {
-    //      for (int i = 0; i < count; i += 2) {
-    //         _game_audio_mix_raw(&game.audio.channels[0], samples);
-    //         _game_audio_mix_raw(&game.audio.channels[3], samples);
-    //        ++samples;
-    //        _game_audio_mix_raw(&game.audio.channels[1], samples);
-    //        _game_audio_mix_raw(&game.audio.channels[2], samples);
-    //        ++samples;
-    //      }
-    //    } else
-    {
-        while (smp.len > 0) {
-            for (&game.audio.channels) |*channel| {
-                gameAudioMixRaw(channel, &smp[0]);
-            }
-            smp[1] = smp[0];
-            smp = smp[2..];
-        }
-    }
-}
-
-fn gameAudioSfxHandlePattern(game: *Game, channel: u2, data: []const u8) void {
-    var player = &game.audio.sfx_player;
-    var pat = std.mem.zeroes(GameAudioSfxPattern);
-    pat.note_1 = util.readBeU16(data);
-    pat.note_2 = util.readBeU16(data[2..]);
-    if (pat.note_1 != 0xFFFD) {
-        const sample: u16 = (pat.note_2 & 0xF000) >> 12;
-        if (sample != 0) {
-            const ptr = player.sfx_mod.samples[sample - 1].data;
-            if (ptr.len > 0) {
-                snd_log.debug("SfxPlayer::handlePattern() preparing sample {}", .{sample});
-                pat.sample_volume = player.sfx_mod.samples[sample - 1].volume;
-                pat.sample_start = 8;
-                pat.sample_buffer = ptr;
-                pat.sample_len = util.readBeU16(ptr) *% 2;
-                const loop_len: u16 = util.readBeU16(ptr[2..]) *% 2;
-                if (loop_len != 0) {
-                    pat.loop_pos = pat.sample_len;
-                    pat.loop_data = ptr;
-                    pat.loop_len = loop_len;
-                } else {
-                    pat.loop_pos = 0;
-                    pat.loop_data = null;
-                    pat.loop_len = 0;
-                }
-                var m: i16 = @bitCast(pat.sample_volume);
-                const effect: u8 = @truncate((@as(u16, @intCast(pat.note_2)) & 0x0F00) >> 8);
-                if (effect == 5) { // volume up
-                    const volume: u8 = @intCast(pat.note_2 & 0xFF);
-                    m += volume;
-                    if (m > 0x3F) {
-                        m = 0x3F;
-                    }
-                } else if (effect == 6) { // volume down
-                    const volume: u8 = @intCast(pat.note_2 & 0xFF);
-                    m -= volume;
-                    if (m < 0) {
-                        m = 0;
-                    }
-                }
-                player.channels[channel].volume = @bitCast(m);
-                pat.sample_volume = @bitCast(m);
-            }
-        }
-    }
-    if (pat.note_1 == 0xFFFD) {
-        snd_log.debug("SfxPlayer::handlePattern() _syncVar = 0x{X}", .{pat.note_2});
-        game.vm.vars[GAME_VAR_MUSIC_SYNC] = @bitCast(pat.note_2);
-    } else if (pat.note_1 != 0) {
-        pat.period_arpeggio = pat.note_1;
-        if (pat.period_arpeggio == 0xFFFE) {
-            player.channels[channel] = std.mem.zeroes(@TypeOf(player.channels[channel]));
-        } else if (pat.sample_buffer) |buf| {
-            // TODO: fix and activate this: assert(pat.note_1 >= 0x37 and pat.note_1 < 0x1000);
-            // convert Amiga period value to hz
-            const freq: i32 = @divTrunc(GAME_PAULA_FREQ, @as(i32, @intCast(pat.note_1)) * 2);
-            snd_log.debug("SfxPlayer::handlePattern() adding sample freq = 0x{X}", .{freq});
-            var ch = &player.channels[channel];
-            ch.sample_data = buf[pat.sample_start..];
-            ch.sample_len = pat.sample_len;
-            ch.sample_loop_pos = pat.loop_pos;
-            ch.sample_loop_len = pat.loop_len;
-            ch.volume = pat.sample_volume;
-            ch.pos.offset = 0;
-            ch.pos.inc = @divTrunc(@as(u64, @intCast(freq)) << GameFrac.bits, @as(u64, @intCast(GAME_MIX_FREQ)));
-        }
-    }
-}
-
-fn gameAudioSfxHandleEvents(game: *Game) void {
-    var player = &game.audio.sfx_player;
-    var order: usize = player.sfx_mod.order_table[player.sfx_mod.cur_order];
-    var pattern_data = player.sfx_mod.data[@as(usize, player.sfx_mod.cur_pos) + order * 1024 ..];
-    inline for (0..4) |ch| {
-        gameAudioSfxHandlePattern(game, @intCast(ch), pattern_data);
-        pattern_data = pattern_data[4..];
-    }
-    player.sfx_mod.cur_pos += 4 * 4;
-    snd_log.debug("SfxPlayer::handleEvents() order = 0x{X} curPos = 0x{X}", .{ order, player.sfx_mod.cur_pos });
-    if (player.sfx_mod.cur_pos >= 1024) {
-        player.sfx_mod.cur_pos = 0;
-        order = player.sfx_mod.cur_order + 1;
-        if (order == player.sfx_mod.num_order) {
-            gameAudioStopAll(game);
-            order = 0;
-            player.playing = false;
-        }
-        player.sfx_mod.cur_order = @truncate(order);
-    }
-}
-
-fn gameAudioSfxMixChannel(s: *i16, ch: *GameAudioSfxChannel) void {
-    if (ch.sample_len == 0) {
-        return;
-    }
-    const pos1: i32 = @intCast(ch.pos.offset >> GameFrac.bits);
-    ch.pos.offset = @intCast(ch.pos.offset +% ch.pos.inc);
-    var pos2: i32 = pos1 + 1;
-    if (ch.sample_loop_len != 0) {
-        if (pos1 >= ch.sample_loop_pos +% ch.sample_loop_len - 1) {
-            pos2 = ch.sample_loop_pos;
-            ch.pos.offset = @bitCast(pos2 << GameFrac.bits);
-        }
-    } else if (pos1 >= ch.sample_len - 1) {
-        ch.sample_len = 0;
-        return;
-    }
-    const s1 = @as(i8, @bitCast(ch.sample_data[@intCast(pos1)]));
-    const s2 = @as(i8, @bitCast(ch.sample_data[@intCast(pos2)]));
-    var sample: i32 = ch.pos.interpolate(s1, s2);
-    sample = s.* +% @as(i32, @intCast(toi16(@divTrunc(sample * ch.volume, 64))));
-    s.* = if (sample < -32768) -32768 else if (sample > 32767) 32767 else @as(i16, @intCast(sample));
-}
-
-fn gameAudioSfxMixSamples(game: *Game, buffer: []i16) void {
-    var buf = buffer;
-    var len: i32 = @divTrunc(@as(i32, @intCast(buf.len)), 2);
-    var player = &game.audio.sfx_player;
-    while (len != 0) {
-        if (player.samples_left == 0) {
-            gameAudioSfxHandleEvents(game);
-            const samples_per_tick = @divTrunc(GAME_MIX_FREQ * @divTrunc(@as(i32, @intCast(player.delay)) * 60 * 1000, GAME_PAULA_FREQ), 1000);
-            player.samples_left = samples_per_tick;
-        }
-        var count = player.samples_left;
-        if (count > len) {
-            count = len;
-        }
-        player.samples_left -= count;
-        len -= count;
-        for (0..@intCast(count)) |_| {
-            gameAudioSfxMixChannel(&buf[0], &player.channels[0]);
-            gameAudioSfxMixChannel(&buf[0], &player.channels[3]);
-            gameAudioSfxMixChannel(&buf[1], &player.channels[1]);
-            gameAudioSfxMixChannel(&buf[1], &player.channels[2]);
-            buf = buf[2..];
-        }
-    }
-}
-
-fn gameAudioSfxReadSamples(game: *Game, buf: []i16) void {
-    const player = &game.audio.sfx_player;
-    if (player.delay != 0 and !game.audio.mute_music) {
-        gameAudioSfxMixSamples(game, buf);
-    }
-}
-
-fn gameAudioUpdate(game: *Game, num_samples: usize) void {
-    assert(num_samples < GAME_MIX_BUF_SIZE);
-    assert(num_samples < GAME_MAX_AUDIO_SAMPLES);
-    @memset(&game.audio.samples, 0);
-    gameAudioMixChannels(game, game.audio.samples[0..num_samples]);
-    gameAudioSfxReadSamples(game, game.audio.samples[0..num_samples]);
-    for (game.audio.samples[0..num_samples], 0..) |sample, i| {
-        game.audio.sample_buffer[i] = ((@as(f32, @floatFromInt(sample)) + 32768.0) / 32768.0) - 1.0;
-    }
-    if (game.audio.callback) |cb| {
-        cb(game.audio.sample_buffer[0..num_samples]);
-    }
+fn gameAudioPlaySoundRaw(game: *Game, channel: u3, data: []const u8, frequency: i32, volume: u8) void {
+    const vol = if (volume > 63) 63 else volume;
+    const freq = if (frequency > 39) 39 else frequency;
+    game.audio.channels[channel].initRaw(data, @intCast(freq), vol, audio.GAME_MIX_FREQ);
 }
 
 pub fn gameKeyDown(game: *Game, input: GameInput) void {
-    //assert(game && game->valid);
     switch (input) {
         .left => game.input.dir_mask.left = true,
         .right => game.input.dir_mask.right = true,
@@ -1193,38 +821,22 @@ pub fn gameCharPressed(game: *Game, c: u8) void {
 }
 
 pub fn debugSndPlaySound(game: *Game, buf: []const u8, frequency: u8, volume: u8) void {
-    var vol = volume;
-    var freq = frequency;
-    if (vol == 0) {
-        gameAudioStopSound(game, 4);
+    if (volume == 0) {
+        game.audio.stopSound(4);
         return;
     }
-    if (vol > 63) {
-        vol = 63;
-    }
-    if (freq > 39) {
-        freq = 39;
-    }
-    gameAudioPlaySoundRaw(game, 4, buf, getSoundFreq(freq), vol);
+    gameAudioPlaySoundRaw(game, 4, buf, frequency, volume);
 }
 
 pub fn sndPlaySound(game: *Game, resNum: u16, frequency: u8, volume: u8, chan: u3) void {
-    var vol = volume;
-    var freq = frequency;
-    snd_log.debug("snd_playSound(0x{X}, {}, {}, {})", .{ resNum, freq, vol, chan });
-    if (vol == 0) {
-        gameAudioStopSound(game, chan);
+    snd_log.debug("snd_playSound(0x{X}, {}, {}, {})", .{ resNum, frequency, volume, chan });
+    if (volume == 0) {
+        game.audio.stopSound(chan);
         return;
-    }
-    if (vol > 63) {
-        vol = 63;
-    }
-    if (freq > 39) {
-        freq = 39;
     }
     const me = &game.res.mem_list[resNum];
     if (me.status == .loaded) {
-        gameAudioPlaySoundRaw(game, chan, me.buf_ptr, getSoundFreq(freq), vol);
+        gameAudioPlaySoundRaw(game, chan, me.buf_ptr, frequency, volume);
     }
 }
 
@@ -1553,7 +1165,7 @@ fn opUpdateResources(game: *Game) void {
     const num = game.vm.ptr.fetchWord();
     vm_log.debug("Script::op_updateResources({})", .{num});
     if (num == 0) {
-        gameAudioStopAll(game);
+        game.audio.stopAll();
         gameResInvalidate(game);
     } else {
         gameResUpdate(game, num);
@@ -1565,12 +1177,12 @@ fn sndPlayMusic(game: *Game, resNum: u16, delay: u16, pos: u8) void {
     // DT_AMIGA, DT_ATARI, DT_DOS
     if (resNum != 0) {
         gameAudioSfxLoadModule(game, resNum, delay, pos);
-        gameAudioSfxStart(game);
-        gamePlaySfxMusic(game);
+        game.audio.sfxStart();
+        game.audio.sfx_player.playSfxMusic();
     } else if (delay != 0) {
-        gameAudioSfxSetEventsDelay(game, delay);
+        game.audio.sfx_player.sfxSetEventsDelay(delay);
     } else {
-        gameAudioStopSfxMusic(game);
+        game.audio.sfx_player.stopSfxMusic();
     }
 }
 
