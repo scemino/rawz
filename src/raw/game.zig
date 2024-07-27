@@ -9,31 +9,14 @@ const GamePc = @import("GamePc.zig");
 const GameData = @import("GameData.zig");
 const Gfx = @import("Gfx.zig");
 const Video = @import("Video.zig");
+const Vm = @import("Vm.zig");
 const audio = @import("audio.zig");
 pub const mementries = @import("mementries.zig");
 pub const util = @import("util.zig");
 pub const byteKillerUnpack = @import("unpack.zig").byteKillerUnpack;
 pub const GameDataType = mementries.GameDataType;
 pub const GameLang = Strings.GameLang;
-const DefaultPrng = std.rand.DefaultPrng;
 const assert = std.debug.assert;
-
-const GAME_NUM_TASKS = 64;
-
-const GAME_INACTIVE_TASK = 0xFFFF;
-
-const GAME_VAR_RANDOM_SEED = 0x3C;
-const GAME_VAR_SCREEN_NUM = 0x67;
-const GAME_VAR_LAST_KEYCHAR = 0xDA;
-const GAME_VAR_HERO_POS_UP_DOWN = 0xE5;
-const GAME_VAR_MUSIC_SYNC = 0xF4;
-const GAME_VAR_SCROLL_Y = 0xF9;
-const GAME_VAR_HERO_ACTION = 0xFA;
-const GAME_VAR_HERO_POS_JUMP_DOWN = 0xFB;
-const GAME_VAR_HERO_POS_LEFT_RIGHT = 0xFC;
-const GAME_VAR_HERO_POS_MASK = 0xFD;
-const GAME_VAR_HERO_ACTION_POS_MASK = 0xFE;
-const GAME_VAR_PAUSE_SLICES = 0xFF;
 
 const GAME_QUAD_STRIP_MAX_VERTICES = 70;
 
@@ -82,26 +65,6 @@ const GameStrEntry = struct {
 };
 
 pub const Game = struct {
-    const Vm = struct {
-        const Task = struct {
-            pc: u16,
-            next_pc: u16,
-            state: u8,
-            next_state: u8,
-        };
-        vars: [256]i16,
-        stack_calls: [64]u16,
-
-        tasks: [GAME_NUM_TASKS]Task,
-        ptr: GamePc,
-        stack_ptr: u8,
-        paused: bool,
-        screen_num: i32,
-        start_time: u32,
-        time_stamp: u32,
-        current_task: u8,
-    };
-
     const Input = struct {
         dir_mask: GameInputDir,
         action: bool, // run,shoot
@@ -134,7 +97,6 @@ pub const Game = struct {
 const video_log = std.log.scoped(.video);
 const vm_log = std.log.scoped(.vm);
 const snd_log = std.log.scoped(.sound);
-const bank_log = std.log.scoped(.bank);
 
 pub fn displayInfo(game: ?*Game) glue.DisplayInfo {
     return .{
@@ -182,18 +144,22 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
 
     game.gfx.setWorkPagePtr(2);
 
-    var rnd = DefaultPrng.init(0);
-    game.vm.vars[GAME_VAR_RANDOM_SEED] = rnd.random().int(i16);
-    if (!game.enable_protection) {
-        game.vm.vars[0xBC] = 0x10;
-        game.vm.vars[0xC6] = 0x80;
-        game.vm.vars[0xF2] = if (game.res.data_type == .amiga or game.res.data_type == .atari) 6000 else 4000;
-        game.vm.vars[0xDC] = 33;
-    }
-
-    if (game.res.data_type == .dos) {
-        game.vm.vars[0xE4] = 20;
-    }
+    game.vm = Vm.init(.{
+        .data_type = game.res.data_type,
+        .user_data = game,
+        .enable_protection = game.enable_protection,
+        .sndPlaySound = sndPlaySound,
+        .sndPlayMusic = sndPlayMusic,
+        .updateResources = updateResources,
+        .setPalette = setPalette,
+        .changePal = changePal,
+        .setVideoWorkPagePtr = setVideoWorkPagePtr,
+        .fillPage = fillPage,
+        .copyPage = copyPage,
+        .drawString = drawString,
+        .getCurrentPart = getCurrentPart,
+        .updateDisplay = updateDisplay,
+    });
 
     game.strings_table = Strings.init(game.res.lang);
 
@@ -207,16 +173,7 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
     const part: GameRes.GamePart = if (num < 36) @enumFromInt(restart_pos[num * 2]) else @enumFromInt(num);
     const part_pos = if (num < 36) restart_pos[num * 2 + 1] else -1;
     restartAt(game, part, part_pos);
-    game.title = game_res_get_game_title(game);
-}
-
-fn sfxPlayerCallback(user_data: ?*anyopaque, pat_note2: u16) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
-    game.vm.vars[GAME_VAR_MUSIC_SYNC] = @bitCast(pat_note2);
-}
-
-fn game_res_get_game_title(game: *Game) [:0]const u8 {
-    return if (game.res.data_type == .dos and game.res.lang == .us) GAME_TITLE_US else GAME_TITLE_EU;
+    game.title = if (game.res.data_type == .dos and game.res.lang == .us) GAME_TITLE_US else GAME_TITLE_EU;
 }
 
 pub fn gameExec(game: *Game, ms: u32) !void {
@@ -276,9 +233,9 @@ pub fn restartAt(game: *Game, part: GameRes.GamePart, pos: i16) void {
         game.vm.vars[0x54] = if (game.res.lang == .fr) 0x1 else 0x81;
     }
     game.res.setupPart(@intFromEnum(part));
-    for (0..GAME_NUM_TASKS) |i| {
-        game.vm.tasks[i].pc = GAME_INACTIVE_TASK;
-        game.vm.tasks[i].next_pc = GAME_INACTIVE_TASK;
+    for (0..Vm.GAME_NUM_TASKS) |i| {
+        game.vm.tasks[i].pc = Vm.GAME_INACTIVE_TASK;
+        game.vm.tasks[i].next_pc = Vm.GAME_INACTIVE_TASK;
         game.vm.tasks[i].state = 0;
         game.vm.tasks[i].next_state = 0;
     }
@@ -301,14 +258,7 @@ fn gameVmSetupTasks(game: *Game) void {
         restartAt(game, part, -1);
         game.res.next_part = null;
     }
-    for (0..GAME_NUM_TASKS) |i| {
-        game.vm.tasks[i].state = game.vm.tasks[i].next_state;
-        const n = game.vm.tasks[i].next_pc;
-        if (n != GAME_INACTIVE_TASK) {
-            game.vm.tasks[i].pc = if (n == GAME_INACTIVE_TASK - 1) GAME_INACTIVE_TASK else n;
-            game.vm.tasks[i].next_pc = GAME_INACTIVE_TASK;
-        }
-    }
+    game.vm.setupTasks();
 }
 
 fn gameVmExecuteTask(game: *Game) !void {
@@ -369,7 +319,7 @@ fn gameVmExecuteTask(game: *Game) !void {
         std.log.err("Script::executeTask() ec=0xFFF invalid opcode=0x{X}", .{opcode});
         return error.InvalidOpcode;
     } else {
-        op_table[opcode](game);
+        Vm.op_table[opcode](&game.vm);
     }
 }
 
@@ -377,7 +327,7 @@ fn gameVmRun(game: *Game) !bool {
     var i = game.vm.current_task;
     if (!game.input.quit and game.vm.tasks[i].state == 0) {
         const n = game.vm.tasks[i].pc;
-        if (n != GAME_INACTIVE_TASK) {
+        if (n != Vm.GAME_INACTIVE_TASK) {
             // execute 1 step of 1 task
             game.vm.ptr = .{ .data = game.res.seg_code, .pc = n };
             game.vm.paused = false;
@@ -385,7 +335,7 @@ fn gameVmRun(game: *Game) !bool {
             try gameVmExecuteTask(game);
             game.vm.tasks[i].pc = game.vm.ptr.pc;
             vm_log.debug("Script::runTasks() i=0x{X} pos=0x{X}", .{ i, game.vm.tasks[i].pc });
-            if (!game.vm.paused and game.vm.tasks[i].pc != GAME_INACTIVE_TASK) {
+            if (!game.vm.paused and game.vm.tasks[i].pc != Vm.GAME_INACTIVE_TASK) {
                 return false;
             }
         }
@@ -395,14 +345,14 @@ fn gameVmRun(game: *Game) !bool {
 
     while (true) {
         // go to next active thread
-        i = (i + 1) % GAME_NUM_TASKS;
+        i = (i + 1) % Vm.GAME_NUM_TASKS;
         if (i == 0) {
             result = true;
             gameVmSetupTasks(game);
             gameVmUpdateInput(game);
         }
 
-        if (game.vm.tasks[i].pc != GAME_INACTIVE_TASK) {
+        if (game.vm.tasks[i].pc != Vm.GAME_INACTIVE_TASK) {
             game.vm.stack_ptr = 0;
             game.vm.current_task = i;
             break;
@@ -416,7 +366,7 @@ fn gameVmUpdateInput(game: *Game) void {
     if (game.res.current_part == .password) {
         const c = game.input.last_char;
         if (c == 8 or c == 0 or (c >= 'a' and c <= 'z')) {
-            game.vm.vars[GAME_VAR_LAST_KEYCHAR] = c & ~@as(u8, @intCast(0x20));
+            game.vm.vars[Vm.GAME_VAR_LAST_KEYCHAR] = c & ~@as(u8, @intCast(0x20));
             game.input.last_char = 0;
         }
     }
@@ -443,50 +393,41 @@ fn gameVmUpdateInput(game: *Game) void {
         m |= 8; // jump
     }
     if (!(game.res.data_type == .amiga or game.res.data_type == .atari)) {
-        game.vm.vars[GAME_VAR_HERO_POS_UP_DOWN] = ud;
+        game.vm.vars[Vm.GAME_VAR_HERO_POS_UP_DOWN] = ud;
     }
-    game.vm.vars[GAME_VAR_HERO_POS_JUMP_DOWN] = jd;
-    game.vm.vars[GAME_VAR_HERO_POS_LEFT_RIGHT] = lr;
-    game.vm.vars[GAME_VAR_HERO_POS_MASK] = m;
+    game.vm.vars[Vm.GAME_VAR_HERO_POS_JUMP_DOWN] = jd;
+    game.vm.vars[Vm.GAME_VAR_HERO_POS_LEFT_RIGHT] = lr;
+    game.vm.vars[Vm.GAME_VAR_HERO_POS_MASK] = m;
     var action: i16 = 0;
     if (game.input.action) {
         action = 1;
         m |= 0x80;
     }
-    game.vm.vars[GAME_VAR_HERO_ACTION] = action;
-    game.vm.vars[GAME_VAR_HERO_ACTION_POS_MASK] = m;
+    game.vm.vars[Vm.GAME_VAR_HERO_ACTION] = action;
+    game.vm.vars[Vm.GAME_VAR_HERO_ACTION_POS_MASK] = m;
     if (game.res.current_part == .water) {
         const mask = game.input.demo_joy.update();
         if (mask != 0) {
-            game.vm.vars[GAME_VAR_HERO_ACTION_POS_MASK] = mask;
-            game.vm.vars[GAME_VAR_HERO_POS_MASK] = mask & 15;
-            game.vm.vars[GAME_VAR_HERO_POS_LEFT_RIGHT] = 0;
+            game.vm.vars[Vm.GAME_VAR_HERO_ACTION_POS_MASK] = mask;
+            game.vm.vars[Vm.GAME_VAR_HERO_POS_MASK] = mask & 15;
+            game.vm.vars[Vm.GAME_VAR_HERO_POS_LEFT_RIGHT] = 0;
             // TODO: change bit mask
             if ((mask & 1) != 0) {
-                game.vm.vars[GAME_VAR_HERO_POS_LEFT_RIGHT] = 1;
+                game.vm.vars[Vm.GAME_VAR_HERO_POS_LEFT_RIGHT] = 1;
             }
             if ((mask & 2) != 0) {
-                game.vm.vars[GAME_VAR_HERO_POS_LEFT_RIGHT] = -1;
+                game.vm.vars[Vm.GAME_VAR_HERO_POS_LEFT_RIGHT] = -1;
             }
-            game.vm.vars[GAME_VAR_HERO_POS_JUMP_DOWN] = 0;
+            game.vm.vars[Vm.GAME_VAR_HERO_POS_JUMP_DOWN] = 0;
             if ((mask & 4) != 0) {
-                game.vm.vars[GAME_VAR_HERO_POS_JUMP_DOWN] = 1;
+                game.vm.vars[Vm.GAME_VAR_HERO_POS_JUMP_DOWN] = 1;
             }
             if ((mask & 8) != 0) {
-                game.vm.vars[GAME_VAR_HERO_POS_JUMP_DOWN] = -1;
+                game.vm.vars[Vm.GAME_VAR_HERO_POS_JUMP_DOWN] = -1;
             }
-            game.vm.vars[GAME_VAR_HERO_ACTION] = (mask >> 7);
+            game.vm.vars[Vm.GAME_VAR_HERO_ACTION] = (mask >> 7);
         }
     }
-}
-
-fn resSoundRead(user_data: ?*anyopaque, id: u16) ?[]const u8 {
-    var game: *Game = @alignCast(@ptrCast(user_data));
-    const me = &game.res.mem_list[id];
-    if (me.status == .loaded and me.type == .sound) {
-        return me.buf_ptr;
-    }
-    return null;
 }
 
 fn gameAudioSfxLoadModule(game: *Game, res_num: u16, delay: u16, pos: u8) void {
@@ -545,8 +486,9 @@ pub fn debugSndPlaySound(game: *Game, buf: []const u8, frequency: u8, volume: u8
     gameAudioPlaySoundRaw(game, 4, buf, frequency, volume);
 }
 
-pub fn sndPlaySound(game: *Game, resNum: u16, frequency: u8, volume: u8, chan: u3) void {
+pub fn sndPlaySound(user_data: ?*anyopaque, resNum: u16, frequency: u8, volume: u8, chan: u3) void {
     snd_log.debug("snd_playSound(0x{X}, {}, {}, {})", .{ resNum, frequency, volume, chan });
+    var game: *Game = @alignCast(@ptrCast(user_data));
     if (volume == 0) {
         game.audio.stopSound(chan);
         return;
@@ -557,219 +499,19 @@ pub fn sndPlaySound(game: *Game, resNum: u16, frequency: u8, volume: u8, chan: u
     }
 }
 
-fn opMovConst(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const n: i16 = @bitCast(game.vm.ptr.fetchWord());
-    vm_log.debug("Script::op_movConst(0x{X}, {})", .{ i, n });
-    game.vm.vars[i] = n;
-}
-
-fn opMov(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const j = game.vm.ptr.fetchByte();
-    vm_log.debug("Script::op_mov(0x{X:0>2}, 0x{X:0>2})", .{ i, j });
-    game.vm.vars[i] = game.vm.vars[j];
-}
-
-fn opAdd(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const j = game.vm.ptr.fetchByte();
-    vm_log.debug("Script::op_add(0x{X:0>2}, 0x{X:0>2})", .{ i, j });
-    game.vm.vars[i] +%= game.vm.vars[j];
-}
-
-fn opAddConst(game: *Game) void {
-    if (game.res.current_part == .luxe and game.vm.ptr.pc == 0x6D48) {
-        vm_log.warn("Script::op_addConst() workaround for infinite looping gun sound", .{});
-        // The script 0x27 slot 0x17 doesn't stop the gun sound from looping.
-        // This is a bug in the original game code, confirmed by Eric Chahi and
-        // addressed with the anniversary editions.
-        // For older releases (DOS, Amiga), we play the 'stop' sound like it is
-        // done in other part of the game code.
-        //
-        //  6D43: jmp(0x6CE5)
-        //  6D46: break
-        //  6D47: VAR(0x06) -= 50
-        //
-        sndPlaySound(game, 0x5B, 1, 63, 1);
-    }
-    const i = game.vm.ptr.fetchByte();
-    const n: i16 = @bitCast(game.vm.ptr.fetchWord());
-    vm_log.debug("Script::op_addConst(0x{X}, {})", .{ i, n });
-    game.vm.vars[i] = game.vm.vars[i] +% n;
-}
-
-fn opCall(game: *Game) void {
-    const off = game.vm.ptr.fetchWord();
-    vm_log.debug("Script::op_call(0x{X})", .{off});
-    if (game.vm.stack_ptr == 0x40) {
-        vm_log.err("Script::op_call() ec=0x8F stack overflow", .{});
-    }
-    game.vm.stack_calls[game.vm.stack_ptr] = game.vm.ptr.pc;
-    game.vm.stack_ptr += 1;
-    game.vm.ptr.pc = off;
-}
-
-fn opRet(game: *Game) void {
-    vm_log.debug("Script::op_ret()", .{});
-    if (game.vm.stack_ptr == 0) {
-        vm_log.err("Script::op_ret() ec=0x8F stack underflow", .{});
-    }
-    game.vm.stack_ptr -= 1;
-    game.vm.ptr.pc = game.vm.stack_calls[game.vm.stack_ptr];
-}
-
-fn opYieldTask(game: *Game) void {
-    vm_log.debug("Script::op_yieldTask()", .{});
-    game.vm.paused = true;
-}
-
-fn opJmp(game: *Game) void {
-    const off = game.vm.ptr.fetchWord();
-    vm_log.debug("Script::op_jmp(0x{X})", .{off});
-    game.vm.ptr.pc = off;
-}
-
-fn opInstallTask(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const n = game.vm.ptr.fetchWord();
-    vm_log.debug("Script::op_installTask(0x{X}, 0x{X})", .{ i, n });
-    game.vm.tasks[i].next_pc = n;
-}
-
-fn opJmpIfVar(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    vm_log.debug("Script::op_jmpIfVar(0x{X})", .{i});
-    game.vm.vars[i] -= 1;
-    if (game.vm.vars[i] != 0) {
-        opJmp(game);
+fn sndPlayMusic(user_data: ?*anyopaque, resNum: u16, delay: u16, pos: u8) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    snd_log.debug("snd_playMusic(0x{X}, {}, {})", .{ resNum, delay, pos });
+    // DT_AMIGA, DT_ATARI, DT_DOS
+    if (resNum != 0) {
+        gameAudioSfxLoadModule(game, resNum, delay, pos);
+        game.audio.sfxStart();
+        game.audio.sfx_player.playSfxMusic();
+    } else if (delay != 0) {
+        game.audio.sfx_player.sfxSetEventsDelay(delay);
     } else {
-        _ = game.vm.ptr.fetchWord();
+        game.audio.sfx_player.stopSfxMusic();
     }
-}
-
-fn fixupPaletteChangeScreen(game: *Game, part: GameRes.GamePart, screen: i32) void {
-    var pal: ?u8 = null;
-    switch (part) {
-        .cite => if (screen == 0x47) { // bitmap resource #68
-            pal = 8;
-        },
-        .luxe => if (screen == 0x4A) { // bitmap resources #144, #145
-            pal = 1;
-        },
-        else => {},
-    }
-    if (pal) |p| {
-        vm_log.debug("Setting palette {} for part {} screen {}", .{ p, part, screen });
-        game.video.changePal(game.res.seg_video_pal, p);
-    }
-}
-
-fn opCondJmp(game: *Game) void {
-    const op = game.vm.ptr.fetchByte();
-    const variable = game.vm.ptr.fetchByte();
-    const b = game.vm.vars[variable];
-    var a: i16 = undefined;
-    if ((op & 0x80) != 0) {
-        a = game.vm.vars[game.vm.ptr.fetchByte()];
-    } else if ((op & 0x40) != 0) {
-        a = @bitCast(game.vm.ptr.fetchWord());
-    } else {
-        a = @intCast(game.vm.ptr.fetchByte());
-    }
-    vm_log.debug("Script::op_condJmp({}, 0x{X:0>2}, 0x{X:0>2}) var=0x{X:0>2}", .{ op, @as(u16, @bitCast(b)), @as(u16, @bitCast(a)), variable });
-    var expr = false;
-    switch (op & 7) {
-        0 => {
-            expr = (b == a);
-            if (!game.enable_protection) {
-                if (game.res.current_part == .copy_protection) {
-                    //
-                    // 0CB8: jmpIf(VAR(0x29) == VAR(0x1E), @0CD3)
-                    // ...
-                    //
-                    if (variable == 0x29 and (op & 0x80) != 0) {
-                        // 4 symbols
-                        game.vm.vars[0x29] = game.vm.vars[0x1E];
-                        game.vm.vars[0x2A] = game.vm.vars[0x1F];
-                        game.vm.vars[0x2B] = game.vm.vars[0x20];
-                        game.vm.vars[0x2C] = game.vm.vars[0x21];
-                        // counters
-                        game.vm.vars[0x32] = 6;
-                        game.vm.vars[0x64] = 20;
-                        vm_log.warn("Script::op_condJmp() bypassing protection", .{});
-                        expr = true;
-                    }
-                }
-            }
-        },
-        1 => expr = (b != a),
-        2 => expr = (b > a),
-        3 => expr = (b >= a),
-        4 => expr = (b < a),
-        5 => expr = (b <= a),
-        else => vm_log.warn("Script::op_condJmp() invalid condition {}", .{op & 7}),
-    }
-    if (expr) {
-        opJmp(game);
-        if (variable == GAME_VAR_SCREEN_NUM and game.vm.screen_num != game.vm.vars[GAME_VAR_SCREEN_NUM]) {
-            fixupPaletteChangeScreen(game, game.res.current_part, game.vm.vars[GAME_VAR_SCREEN_NUM]);
-            game.vm.screen_num = game.vm.vars[GAME_VAR_SCREEN_NUM];
-        }
-    } else {
-        _ = game.vm.ptr.fetchWord();
-    }
-}
-
-fn opSetPalette(game: *Game) void {
-    const i = game.vm.ptr.fetchWord();
-    const num = i >> 8;
-    vm_log.debug("Script::op_changePalette({})", .{num});
-    if (!game.gfx.fix_up_palette or game.res.current_part != .intro or (num != 10 and num != 16)) {
-        game.video.next_pal = @intCast(num);
-    }
-}
-
-fn opChangeTasksState(game: *Game) void {
-    const start = game.vm.ptr.fetchByte();
-    const end = game.vm.ptr.fetchByte();
-    if (end < start) {
-        vm_log.warn("Script::op_changeTasksState() ec=0x880 (end < start)", .{});
-        return;
-    }
-    const state = game.vm.ptr.fetchByte();
-
-    vm_log.debug("Script::op_changeTasksState({}, {}, {})", .{ start, end, state });
-
-    if (state == 2) {
-        for (start..end + 1) |i| {
-            game.vm.tasks[i].next_pc = GAME_INACTIVE_TASK - 1;
-        }
-    } else if (state < 2) {
-        for (start..end + 1) |i| {
-            game.vm.tasks[i].next_state = state;
-        }
-    }
-}
-
-fn opSelectPage(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    vm_log.debug("Script::op_selectPage({})", .{i});
-    game.video.setWorkPagePtr(i);
-}
-
-fn opFillPage(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const color = game.vm.ptr.fetchByte();
-    vm_log.debug("Script::op_fillPage({}, {})", .{ i, color });
-    game.video.fillPage(i, color);
-}
-
-fn opCopyPage(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const j = game.vm.ptr.fetchByte();
-    vm_log.debug("Script::op_copyPage({}, {})", .{ i, j });
-    game.video.copyPage(i, j, game.vm.vars[GAME_VAR_SCROLL_Y]);
 }
 
 fn inpHandleSpecialKeys(game: *Game) void {
@@ -792,8 +534,18 @@ fn inpHandleSpecialKeys(game: *Game) void {
     }
 }
 
-fn opUpdateDisplay(game: *Game) void {
-    const page = game.vm.ptr.fetchByte();
+fn updateResources(user_data: ?*anyopaque, num: u16) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    if (num == 0) {
+        game.audio.stopAll();
+        game.res.invalidate();
+    } else {
+        game.res.update(num);
+    }
+}
+
+fn updateDisplay(user_data: ?*anyopaque, page: u8) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
     vm_log.debug("Script::op_updateDisplay({})", .{page});
     inpHandleSpecialKeys(game);
 
@@ -805,9 +557,9 @@ fn opUpdateDisplay(game: *Game) void {
     }
 
     const frame_hz: i32 = 50;
-    if (game.vm.vars[GAME_VAR_PAUSE_SLICES] != 0) {
+    if (game.vm.vars[Vm.GAME_VAR_PAUSE_SLICES] != 0) {
         const delay: i32 = @as(i32, @intCast(game.elapsed)) - @as(i32, @intCast(game.vm.time_stamp));
-        const pause = @divTrunc(@as(i32, @intCast(game.vm.vars[GAME_VAR_PAUSE_SLICES])) * 1000, frame_hz) - delay;
+        const pause = @divTrunc(@as(i32, @intCast(game.vm.vars[Vm.GAME_VAR_PAUSE_SLICES])) * 1000, frame_hz) - delay;
         if (pause > 0) {
             game.sleep += @as(u32, @intCast(pause));
         }
@@ -818,133 +570,53 @@ fn opUpdateDisplay(game: *Game) void {
     game.video.updateDisplay(game.res.seg_video_pal, page);
 }
 
-fn opRemoveTask(game: *Game) void {
-    vm_log.debug("Script::op_removeTask()", .{});
-    game.vm.ptr.pc = 0xFFFF;
-    game.vm.paused = true;
-}
-
-fn opDrawString(game: *Game) void {
-    const strId = game.vm.ptr.fetchWord();
-    const x: u16 = game.vm.ptr.fetchByte();
-    const y: u16 = game.vm.ptr.fetchByte();
-    const col: u16 = game.vm.ptr.fetchByte();
-    vm_log.debug("Script::op_drawString(0x{X}, {}, {}, {})", .{ strId, x, y, col });
-    const str = game.strings_table.find(strId);
-    game.video.drawString(@truncate(col), x, y, str);
-}
-
-fn opSub(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const j = game.vm.ptr.fetchByte();
-    vm_log.debug("Script::op_sub(0x{X}, 0x{X})", .{ i, j });
-    game.vm.vars[i] -= game.vm.vars[j];
-}
-
-fn opAnd(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const n: u16 = game.vm.ptr.fetchWord();
-    vm_log.debug("Script::op_and(0x{X}, {})", .{ i, n });
-    game.vm.vars[i] = @bitCast(@as(u16, @bitCast(game.vm.vars[i])) & n);
-}
-
-fn opOr(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const n: i16 = @bitCast(game.vm.ptr.fetchWord());
-    vm_log.debug("Script::op_or(0x{X}, {})", .{ i, n });
-    game.vm.vars[i] = game.vm.vars[i] | n;
-}
-
-fn opShl(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const n: u4 = @intCast(game.vm.ptr.fetchWord());
-    vm_log.debug("Script::op_shl(0x{X:0>2}, {})", .{ i, n });
-    game.vm.vars[i] = @bitCast(@as(u16, @bitCast(game.vm.vars[i])) << n);
-}
-
-fn opShr(game: *Game) void {
-    const i = game.vm.ptr.fetchByte();
-    const n: u4 = @intCast(game.vm.ptr.fetchWord());
-    vm_log.debug("Script::op_shr(0x{X:0>2}, {})", .{ i, n });
-    game.vm.vars[i] = @bitCast(@as(u16, @intCast(game.vm.vars[i])) >> n);
-}
-
-fn opPlaySound(game: *Game) void {
-    const res_num = game.vm.ptr.fetchWord();
-    const freq = game.vm.ptr.fetchByte();
-    const vol: u8 = @truncate(game.vm.ptr.fetchByte());
-    const channel = game.vm.ptr.fetchByte();
-    vm_log.debug("Script::op_playSound(0x{X}, {}, {}, {})", .{ res_num, freq, vol, channel });
-    sndPlaySound(game, res_num, freq, vol, @intCast(channel));
-}
-
-fn opUpdateResources(game: *Game) void {
-    const num = game.vm.ptr.fetchWord();
-    vm_log.debug("Script::op_updateResources({})", .{num});
-    if (num == 0) {
-        game.audio.stopAll();
-        game.res.invalidate();
-    } else {
-        game.res.update(num);
+fn setPalette(user_data: ?*anyopaque, pal: u8) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    if (!game.gfx.fix_up_palette or game.res.current_part != .intro or (pal != 10 and pal != 16)) {
+        game.video.next_pal = @intCast(pal);
     }
 }
 
-fn sndPlayMusic(game: *Game, resNum: u16, delay: u16, pos: u8) void {
-    snd_log.debug("snd_playMusic(0x{X}, {}, {})", .{ resNum, delay, pos });
-    // DT_AMIGA, DT_ATARI, DT_DOS
-    if (resNum != 0) {
-        gameAudioSfxLoadModule(game, resNum, delay, pos);
-        game.audio.sfxStart();
-        game.audio.sfx_player.playSfxMusic();
-    } else if (delay != 0) {
-        game.audio.sfx_player.sfxSetEventsDelay(delay);
-    } else {
-        game.audio.sfx_player.stopSfxMusic();
+fn setVideoWorkPagePtr(user_data: ?*anyopaque, page: u8) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    game.video.setWorkPagePtr(page);
+}
+
+fn fillPage(user_data: ?*anyopaque, page: u8, color: u8) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    game.video.fillPage(page, color);
+}
+
+fn copyPage(user_data: ?*anyopaque, src: u8, dst: u8, vscroll: i16) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    game.video.copyPage(src, dst, vscroll);
+}
+
+fn drawString(user_data: ?*anyopaque, color: u8, x: u16, y: u16, str_id: u16) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    game.video.drawString(color, x, y, game.strings_table.find(str_id));
+}
+
+fn getCurrentPart(user_data: ?*anyopaque) GameRes.GamePart {
+    const game: *Game = @alignCast(@ptrCast(user_data));
+    return game.res.current_part;
+}
+
+fn changePal(user_data: ?*anyopaque, pal: u8) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    game.video.changePal(game.res.seg_video_pal, pal);
+}
+
+fn sfxPlayerCallback(user_data: ?*anyopaque, pat_note2: u16) void {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    game.vm.vars[Vm.GAME_VAR_MUSIC_SYNC] = @bitCast(pat_note2);
+}
+
+fn resSoundRead(user_data: ?*anyopaque, id: u16) ?[]const u8 {
+    var game: *Game = @alignCast(@ptrCast(user_data));
+    const me = &game.res.mem_list[id];
+    if (me.status == .loaded and me.type == .sound) {
+        return me.buf_ptr;
     }
+    return null;
 }
-
-fn opPlayMusic(game: *Game) void {
-    const res_num = game.vm.ptr.fetchWord();
-    const delay = game.vm.ptr.fetchWord();
-    const pos = game.vm.ptr.fetchByte();
-    vm_log.debug("Script::op_playMusic(0x{X}, {}, {})", .{ res_num, delay, pos });
-    sndPlayMusic(game, res_num, delay, pos);
-}
-
-const OpFunc = *const fn (*Game) void;
-const op_table = [_]OpFunc{
-    // 0x00
-    &opMovConst,
-    &opMov,
-    &opAdd,
-    &opAddConst,
-    // 0x04
-    &opCall,
-    &opRet,
-    &opYieldTask,
-    &opJmp,
-    // 0x08
-    &opInstallTask,
-    &opJmpIfVar,
-    &opCondJmp,
-    &opSetPalette,
-    // 0x0C
-    &opChangeTasksState,
-    &opSelectPage,
-    &opFillPage,
-    &opCopyPage,
-    // 0x10
-    &opUpdateDisplay,
-    &opRemoveTask,
-    &opDrawString,
-    &opSub,
-    // 0x14
-    &opAnd,
-    &opOr,
-    &opShl,
-    &opShr,
-    // 0x18
-    &opPlaySound,
-    &opUpdateResources,
-    &opPlayMusic,
-};

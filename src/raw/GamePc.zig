@@ -1,7 +1,7 @@
 const std = @import("std");
 
-data: []u8,
-pc: u16,
+data: []u8 = &[0]u8{},
+pc: u16 = 0,
 const Self = @This();
 
 pub fn fetchByte(pc: *Self) u8 {
