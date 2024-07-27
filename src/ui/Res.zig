@@ -136,7 +136,7 @@ fn drawPreview(self: *Self) void {
 }
 
 /// Update the palette from the specified resource item.
-fn updatePalette(self: *Self, item: raw.game.GameMemEntry) void {
+fn updatePalette(self: *Self, item: raw.game.GameRes.GameMemEntry) void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     var buf = self.readResItem(item, gpa.allocator());
     defer gpa.allocator().free(buf);
@@ -346,9 +346,9 @@ fn drawResList(self: *Self) void {
 }
 
 /// Read the data of the specified resource.
-fn readResItem(self: *Self, item: raw.game.GameMemEntry, allocator: std.mem.Allocator) []const u8 {
+fn readResItem(self: *Self, item: raw.game.GameRes.GameMemEntry, allocator: std.mem.Allocator) []const u8 {
     const buf: []u8 = allocator.alloc(u8, item.unpacked_size) catch @panic("no more memory :(");
-    _ = raw.game.gameResReadBank(self.game, &item, buf);
+    _ = self.game.res.readBank(&item, buf);
     return buf;
 }
 

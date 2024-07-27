@@ -108,7 +108,7 @@ fn drawMenu() void {
     if (ig.igBeginMainMenuBar()) {
         if (ig.igBeginMenu("System", true)) {
             if (ig.igBeginMenu("Restart at", true)) {
-                const parts = [_]raw.game.GamePart{ .intro, .water, .prison, .cite, .arene, .luxe, .final, .password, .copy_protection };
+                const parts = [_]raw.game.GameRes.GamePart{ .intro, .water, .prison, .cite, .arene, .luxe, .final, .password, .copy_protection };
                 const part_names = [_][:0]const u8{ "Intro", "Water", "Prison", "Cite", "Arene", "Luxe", "Final", "Password", "Copy Protection" };
                 for (parts, 0..) |part, i| {
                     var part_selected = state.game.res.current_part == part;

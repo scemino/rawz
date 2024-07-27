@@ -4,6 +4,7 @@ const glue = @import("../common/glue.zig");
 const DemoJoy = @import("DemoJoy.zig");
 const Strings = @import("Strings.zig");
 const GameFrac = @import("GameFrac.zig");
+pub const GameRes = @import("Res.zig");
 const GamePc = @import("GamePc.zig");
 const GameData = @import("GameData.zig");
 const Gfx = @import("Gfx.zig");
@@ -12,14 +13,11 @@ const audio = @import("audio.zig");
 pub const mementries = @import("mementries.zig");
 pub const util = @import("util.zig");
 pub const byteKillerUnpack = @import("unpack.zig").byteKillerUnpack;
-pub const detectAmigaAtari = mementries.detectAmigaAtari;
 pub const GameDataType = mementries.GameDataType;
 pub const GameLang = Strings.GameLang;
 const DefaultPrng = std.rand.DefaultPrng;
 const assert = std.debug.assert;
 
-const GAME_ENTRIES_COUNT = 146;
-const GAME_MEM_BLOCK_SIZE = 1 * 1024 * 1024;
 const GAME_NUM_TASKS = 64;
 
 const GAME_INACTIVE_TASK = 0xFFFF;
@@ -39,48 +37,10 @@ const GAME_VAR_PAUSE_SLICES = 0xFF;
 
 const GAME_QUAD_STRIP_MAX_VERTICES = 70;
 
-const font = [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x10, 0x00, 0x28, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0x7E, 0x24, 0x24, 0x7E, 0x24, 0x00, 0x08, 0x3E, 0x48, 0x3C, 0x12, 0x7C, 0x10, 0x00, 0x42, 0xA4, 0x48, 0x10, 0x24, 0x4A, 0x84, 0x00, 0x60, 0x90, 0x90, 0x70, 0x8A, 0x84, 0x7A, 0x00, 0x08, 0x08, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x08, 0x10, 0x10, 0x10, 0x08, 0x06, 0x00, 0xC0, 0x20, 0x10, 0x10, 0x10, 0x20, 0xC0, 0x00, 0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00, 0x00, 0x10, 0x10, 0x7C, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x20, 0x00, 0x00, 0x00, 0x7C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x28, 0x10, 0x00, 0x00, 0x04, 0x08, 0x10, 0x20, 0x40, 0x00, 0x00, 0x78, 0x84, 0x8C, 0x94, 0xA4, 0xC4, 0x78, 0x00, 0x10, 0x30, 0x50, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x78, 0x84, 0x04, 0x08, 0x30, 0x40, 0xFC, 0x00, 0x78, 0x84, 0x04, 0x38, 0x04, 0x84, 0x78, 0x00, 0x08, 0x18, 0x28, 0x48, 0xFC, 0x08, 0x08, 0x00, 0xFC, 0x80, 0xF8, 0x04, 0x04, 0x84, 0x78, 0x00, 0x38, 0x40, 0x80, 0xF8, 0x84, 0x84, 0x78, 0x00, 0xFC, 0x04, 0x04, 0x08, 0x10, 0x20, 0x40, 0x00, 0x78, 0x84, 0x84, 0x78, 0x84, 0x84, 0x78, 0x00, 0x78, 0x84, 0x84, 0x7C, 0x04, 0x08, 0x70, 0x00, 0x00, 0x18, 0x18, 0x00, 0x00, 0x18, 0x18, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00, 0x10, 0x10, 0x60, 0x04, 0x08, 0x10, 0x20, 0x10, 0x08, 0x04, 0x00, 0x00, 0x00, 0xFE, 0x00, 0x00, 0xFE, 0x00, 0x00, 0x20, 0x10, 0x08, 0x04, 0x08, 0x10, 0x20, 0x00, 0x7C, 0x82, 0x02, 0x0C, 0x10, 0x00, 0x10, 0x00, 0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00, 0x78, 0x84, 0x84, 0xFC, 0x84, 0x84, 0x84, 0x00, 0xF8, 0x84, 0x84, 0xF8, 0x84, 0x84, 0xF8, 0x00, 0x78, 0x84, 0x80, 0x80, 0x80, 0x84, 0x78, 0x00, 0xF8, 0x84, 0x84, 0x84, 0x84, 0x84, 0xF8, 0x00, 0x7C, 0x40, 0x40, 0x78, 0x40, 0x40, 0x7C, 0x00, 0xFC, 0x80, 0x80, 0xF0, 0x80, 0x80, 0x80, 0x00, 0x7C, 0x80, 0x80, 0x8C, 0x84, 0x84, 0x7C, 0x00, 0x84, 0x84, 0x84, 0xFC, 0x84, 0x84, 0x84, 0x00, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x04, 0x04, 0x04, 0x04, 0x84, 0x84, 0x78, 0x00, 0x8C, 0x90, 0xA0, 0xE0, 0x90, 0x88, 0x84, 0x00, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0xFC, 0x00, 0x82, 0xC6, 0xAA, 0x92, 0x82, 0x82, 0x82, 0x00, 0x84, 0xC4, 0xA4, 0x94, 0x8C, 0x84, 0x84, 0x00, 0x78, 0x84, 0x84, 0x84, 0x84, 0x84, 0x78, 0x00, 0xF8, 0x84, 0x84, 0xF8, 0x80, 0x80, 0x80, 0x00, 0x78, 0x84, 0x84, 0x84, 0x84, 0x8C, 0x7C, 0x03, 0xF8, 0x84, 0x84, 0xF8, 0x90, 0x88, 0x84, 0x00, 0x78, 0x84, 0x80, 0x78, 0x04, 0x84, 0x78, 0x00, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x84, 0x84, 0x84, 0x84, 0x84, 0x84, 0x78, 0x00, 0x84, 0x84, 0x84, 0x84, 0x84, 0x48, 0x30, 0x00, 0x82, 0x82, 0x82, 0x82, 0x92, 0xAA, 0xC6, 0x00, 0x82, 0x44, 0x28, 0x10, 0x28, 0x44, 0x82, 0x00, 0x82, 0x44, 0x28, 0x10, 0x10, 0x10, 0x10, 0x00, 0xFC, 0x04, 0x08, 0x10, 0x20, 0x40, 0xFC, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFE, 0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x00, 0x00, 0x38, 0x04, 0x3C, 0x44, 0x3C, 0x00, 0x40, 0x40, 0x78, 0x44, 0x44, 0x44, 0x78, 0x00, 0x00, 0x00, 0x3C, 0x40, 0x40, 0x40, 0x3C, 0x00, 0x04, 0x04, 0x3C, 0x44, 0x44, 0x44, 0x3C, 0x00, 0x00, 0x00, 0x38, 0x44, 0x7C, 0x40, 0x3C, 0x00, 0x38, 0x44, 0x40, 0x60, 0x40, 0x40, 0x40, 0x00, 0x00, 0x00, 0x3C, 0x44, 0x44, 0x3C, 0x04, 0x78, 0x40, 0x40, 0x58, 0x64, 0x44, 0x44, 0x44, 0x00, 0x10, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x02, 0x00, 0x02, 0x02, 0x02, 0x02, 0x42, 0x3C, 0x40, 0x40, 0x46, 0x48, 0x70, 0x48, 0x46, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0xEC, 0x92, 0x92, 0x92, 0x92, 0x00, 0x00, 0x00, 0x78, 0x44, 0x44, 0x44, 0x44, 0x00, 0x00, 0x00, 0x38, 0x44, 0x44, 0x44, 0x38, 0x00, 0x00, 0x00, 0x78, 0x44, 0x44, 0x78, 0x40, 0x40, 0x00, 0x00, 0x3C, 0x44, 0x44, 0x3C, 0x04, 0x04, 0x00, 0x00, 0x4C, 0x70, 0x40, 0x40, 0x40, 0x00, 0x00, 0x00, 0x3C, 0x40, 0x38, 0x04, 0x78, 0x00, 0x10, 0x10, 0x3C, 0x10, 0x10, 0x10, 0x0C, 0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x44, 0x78, 0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x28, 0x10, 0x00, 0x00, 0x00, 0x82, 0x82, 0x92, 0xAA, 0xC6, 0x00, 0x00, 0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00, 0x00, 0x42, 0x22, 0x24, 0x18, 0x08, 0x30, 0x00, 0x00, 0x7C, 0x08, 0x10, 0x20, 0x7C, 0x00, 0x60, 0x90, 0x20, 0x40, 0xF0, 0x00, 0x00, 0x00, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0x00, 0x38, 0x44, 0xBA, 0xA2, 0xBA, 0x44, 0x38, 0x00, 0x38, 0x44, 0x82, 0x82, 0x44, 0x28, 0xEE, 0x00, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA };
-
 const restart_pos = [36 * 2]i16{ 16008, 0, 16001, 0, 16002, 10, 16002, 12, 16002, 14, 16003, 20, 16003, 24, 16003, 26, 16004, 30, 16004, 31, 16004, 32, 16004, 33, 16004, 34, 16004, 35, 16004, 36, 16004, 37, 16004, 38, 16004, 39, 16004, 40, 16004, 41, 16004, 42, 16004, 43, 16004, 44, 16004, 45, 16004, 46, 16004, 47, 16004, 48, 16004, 49, 16006, 64, 16006, 65, 16006, 66, 16006, 67, 16006, 68, 16005, 50, 16006, 60, 16007, 0 };
-const mem_list_parts = [_][4]u8{
-    // ipal, icod, ivd1, ivd2
-    .{ 0x14, 0x15, 0x16, 0x00 }, // 16000 - protection screens
-    .{ 0x17, 0x18, 0x19, 0x00 }, // 16001 - introduction
-    .{ 0x1A, 0x1B, 0x1C, 0x11 }, // 16002 - water
-    .{ 0x1D, 0x1E, 0x1F, 0x11 }, // 16003 - jail
-    .{ 0x20, 0x21, 0x22, 0x11 }, // 16004 - 'cite'
-    .{ 0x23, 0x24, 0x25, 0x00 }, // 16005 - 'arene'
-    .{ 0x26, 0x27, 0x28, 0x11 }, // 16006 - 'luxe'
-    .{ 0x29, 0x2A, 0x2B, 0x11 }, // 16007 - 'final'
-    .{ 0x7D, 0x7E, 0x7F, 0x00 }, // 16008 - password screen
-    .{ 0x7D, 0x7E, 0x7F, 0x00 }, // 16009 - password screen
-};
 
 const GAME_TITLE_EU = "Another World";
 const GAME_TITLE_US = "Out Of This World";
-
-pub const GameMemEntry = struct {
-    status: GameResStatus, // 0x0
-    type: GameResType, // 0x1
-    buf_ptr: []u8, // 0x2
-    rank_num: u8, // 0x6
-    bank_num: u8, // 0x7
-    bank_pos: u32, // 0x8
-    packed_size: u32, // 0xC
-    unpacked_size: u32, // 0x12
-};
-
-pub const GamePart = enum(u16) {
-    copy_protection = 16000,
-    intro = 16001,
-    water = 16002,
-    prison = 16003,
-    cite = 16004,
-    arene = 16005,
-    luxe = 16006,
-    final = 16007,
-    password = 16008,
-};
 
 pub const GameInput = enum {
     left,
@@ -93,49 +53,11 @@ pub const GameInput = enum {
     pause,
 };
 
-const GameResType = enum(u8) {
-    sound,
-    music,
-    bitmap, // full screen 4bpp video buffer, size=200*320/2
-    palette, // palette (1024=vga + 1024=ega), size=2048
-    bytecode,
-    shape,
-    bank, // common part shapes (bank2.mat)
-};
-
-const GameResStatus = enum(u8) {
-    null,
-    loaded,
-    toload,
-    uninit = 0xff,
-};
-
 const GameInputDir = packed struct {
     left: bool = false,
     right: bool = false,
     up: bool = false,
     down: bool = false,
-};
-
-pub const GameRes = struct {
-    mem_list: [GAME_ENTRIES_COUNT]GameMemEntry,
-    num_mem_list: u16,
-    mem: [GAME_MEM_BLOCK_SIZE]u8,
-    current_part: GamePart,
-    next_part: ?GamePart,
-    script_bak: usize,
-    script_cur: usize,
-    vid_cur: usize,
-    use_seg_video2: bool,
-    seg_video_pal: []u8,
-    seg_code: []u8,
-    seg_code_size: u16,
-    seg_video1: []u8,
-    seg_video2: []u8,
-    has_password_screen: bool,
-    data_type: GameDataType,
-    data: GameData,
-    lang: GameLang,
 };
 
 const GameAudioDesc = struct {
@@ -201,12 +123,9 @@ pub const Game = struct {
     sleep: u32,
 
     gfx: Gfx,
-
     audio: audio.Audio,
     video: Video,
-
     vm: Vm,
-
     input: Input,
 
     title: [:0]const u8, // title of the game
@@ -252,13 +171,14 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
         game.input.demo_joy.read(demo);
     }
 
-    gameResDetectVersion(game);
+    game.res.detectVersion();
     game.video = Video.init(&game.gfx, game.res.data_type, desc.use_ega);
+    game.res.video = &game.video;
     game.res.has_password_screen = true;
     game.res.script_bak = 0;
     game.res.script_cur = 0;
-    game.res.vid_cur = GAME_MEM_BLOCK_SIZE - (Gfx.GAME_WIDTH * Gfx.GAME_HEIGHT / 2); // 4bpp bitmap
-    try gameResReadEntries(game);
+    game.res.vid_cur = GameRes.GAME_MEM_BLOCK_SIZE - (Gfx.GAME_WIDTH * Gfx.GAME_HEIGHT / 2); // 4bpp bitmap
+    try game.res.readEntries();
 
     game.gfx.setWorkPagePtr(2);
 
@@ -278,17 +198,15 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
     game.strings_table = Strings.init(game.res.lang);
 
     if (game.enable_protection and (game.res.data_type != .dos or game.res.has_password_screen)) {
-        game.part_num = @intFromEnum(GamePart.copy_protection);
+        game.part_num = @intFromEnum(GameRes.GamePart.copy_protection);
     }
     game.audio.sfx_player.callback = &sfxPlayerCallback;
     game.audio.sfx_player.callback_user_data = game;
 
     const num = game.part_num;
-    if (num < 36) {
-        restartAt(game, @enumFromInt(restart_pos[num * 2]), restart_pos[num * 2 + 1]);
-    } else {
-        restartAt(game, @enumFromInt(num), -1);
-    }
+    const part: GameRes.GamePart = if (num < 36) @enumFromInt(restart_pos[num * 2]) else @enumFromInt(num);
+    const part_pos = if (num < 36) restart_pos[num * 2 + 1] else -1;
+    restartAt(game, part, part_pos);
     game.title = game_res_get_game_title(game);
 }
 
@@ -341,7 +259,7 @@ pub fn gameExec(game: *Game, ms: u32) !void {
     game.sleep += 20; // wait 20 ms (50 Hz)
 }
 
-pub fn restartAt(game: *Game, part: GamePart, pos: i16) void {
+pub fn restartAt(game: *Game, part: GameRes.GamePart, pos: i16) void {
     game.audio.stopAll();
     if (game.res.data_type == .dos and part == .copy_protection) {
         // VAR(0x54) indicates if the "Out of this World" title screen should be presented
@@ -357,7 +275,7 @@ pub fn restartAt(game: *Game, part: GamePart, pos: i16) void {
         // Use "Another World" title screen if language is set to French
         game.vm.vars[0x54] = if (game.res.lang == .fr) 0x1 else 0x81;
     }
-    gameResSetupPart(game, @intFromEnum(part));
+    game.res.setupPart(@intFromEnum(part));
     for (0..GAME_NUM_TASKS) |i| {
         game.vm.tasks[i].pc = GAME_INACTIVE_TASK;
         game.vm.tasks[i].next_pc = GAME_INACTIVE_TASK;
@@ -562,207 +480,6 @@ fn gameVmUpdateInput(game: *Game) void {
     }
 }
 
-fn gameResInvalidateAll(game: *Game) void {
-    for (0..game.res.num_mem_list) |i| {
-        game.res.mem_list[i].status = .null;
-    }
-    game.res.script_cur = 0;
-    game.video.current_pal = 0xFF;
-}
-
-pub fn gameResReadBank(game: *Game, me: *const GameMemEntry, dst_buf: []u8) bool {
-    if (me.bank_num > 0xd)
-        return false;
-
-    if (game.res.data.banks.get(me.bank_num - 1)) |bank| {
-        if (me.packed_size != me.unpacked_size) {
-            if (byteKillerUnpack(dst_buf[0..me.unpacked_size], bank[me.bank_pos..][0..me.packed_size])) {
-                return true;
-            } else |_| {
-                return false;
-            }
-        } else {
-            @memcpy(dst_buf[0..me.unpacked_size], bank[me.bank_pos..][0..me.packed_size]);
-        }
-
-        return true;
-    }
-    return false;
-}
-
-fn gameResLoad(game: *Game) void {
-    while (true) {
-        var me_found: ?*GameMemEntry = null;
-
-        // get resource with max rank_num
-        var max_num: u8 = 0;
-        var resource_num: usize = 0;
-        for (0..game.res.num_mem_list) |i| {
-            const it = &game.res.mem_list[i];
-            if (it.status == .toload and max_num <= it.rank_num) {
-                max_num = it.rank_num;
-                me_found = it;
-                resource_num = i;
-            }
-        }
-        if (me_found) |me| {
-            var mem_ptr: []u8 = undefined;
-            if (me.type == .bitmap) {
-                mem_ptr = game.res.mem[game.res.vid_cur..];
-            } else {
-                mem_ptr = game.res.mem[game.res.script_cur..];
-                const avail: usize = (game.res.vid_cur - game.res.script_cur);
-                if (me.unpacked_size > avail) {
-                    std.log.warn("Resource::load() not enough memory, available={}", .{avail});
-                    me.status = .null;
-                    continue;
-                }
-            }
-            if (me.bank_num == 0) {
-                std.log.warn("Resource::load() ec=0xF00 (me.bankNum == 0)", .{});
-                me.status = .null;
-            } else {
-                bank_log.debug("Resource::load() bufPos=0x{X} size={} type={} pos=0x{X} bankNum={}", .{ game.res.mem.len - mem_ptr.len, me.packed_size, me.type, me.bank_pos, me.bank_num });
-                if (gameResReadBank(game, me, mem_ptr)) {
-                    if (me.type == .bitmap) {
-                        game.video.copyBitmapPtr(game.res.mem[game.res.vid_cur..]);
-                        me.status = .null;
-                    } else {
-                        me.buf_ptr = mem_ptr;
-                        me.status = .loaded;
-                        game.res.script_cur += me.unpacked_size;
-                    }
-                } else {
-                    if (game.res.data_type == .dos and me.bank_num == 12 and me.type == .bank) {
-                        // DOS demo version does not have the bank for this resource
-                        // this should be safe to ignore as the resource does not appear to be used by the game code
-                        me.status = .null;
-                        continue;
-                    }
-                    std.log.err("Unable to read resource {} from bank {}", .{ resource_num, me.bank_num });
-                }
-            }
-        } else break;
-    }
-}
-
-fn gameResSetupPart(game: *Game, id: usize) void {
-    if (@as(GamePart, @enumFromInt(id)) != game.res.current_part) {
-        var ipal: u8 = 0;
-        var icod: u8 = 0;
-        var ivd1: u8 = 0;
-        var ivd2: u8 = 0;
-        if (id >= 16000 and id <= 16009) {
-            const part = id - 16000;
-            ipal = mem_list_parts[part][0];
-            icod = mem_list_parts[part][1];
-            ivd1 = mem_list_parts[part][2];
-            ivd2 = mem_list_parts[part][3];
-        } else {
-            std.log.err("Resource::setupPart() ec=0xF07 invalid part", .{});
-        }
-        gameResInvalidateAll(game);
-        game.res.mem_list[ipal].status = .toload;
-        game.res.mem_list[icod].status = .toload;
-        game.res.mem_list[ivd1].status = .toload;
-        if (ivd2 != 0) {
-            game.res.mem_list[ivd2].status = .toload;
-        }
-        gameResLoad(game);
-        game.res.seg_video_pal = game.res.mem_list[ipal].buf_ptr;
-        game.res.seg_code = game.res.mem_list[icod].buf_ptr;
-        game.res.seg_code_size = @intCast(game.res.mem_list[icod].unpacked_size);
-        game.res.seg_video1 = game.res.mem_list[ivd1].buf_ptr;
-        if (ivd2 != 0) {
-            game.res.seg_video2 = game.res.mem_list[ivd2].buf_ptr;
-        }
-        game.res.current_part = @enumFromInt(id);
-    }
-    game.res.script_bak = game.res.script_cur;
-}
-
-fn gameResDetectVersion(game: *Game) void {
-    if (game.res.data.mem_list) |_| {
-        // only DOS game has a memlist.bin file
-        game.res.data_type = .dos;
-        std.log.info("Using DOS data files", .{});
-    } else {
-        const detection = detectAmigaAtari(game.res.data.banks.bank01.?.len);
-        if (detection) |detected| {
-            game.res.data_type = detected.data_type;
-            if (detected.data_type == .atari) {
-                std.log.info("Using Atari data files", .{});
-            } else {
-                std.log.info("Using Amiga data files", .{});
-            }
-            game.res.num_mem_list = GAME_ENTRIES_COUNT;
-            for (0..GAME_ENTRIES_COUNT) |i| {
-                game.res.mem_list[i].type = @enumFromInt(detected.entries[i].type);
-                game.res.mem_list[i].bank_num = detected.entries[i].bank;
-                game.res.mem_list[i].bank_pos = detected.entries[i].offset;
-                game.res.mem_list[i].packed_size = detected.entries[i].packed_size;
-                game.res.mem_list[i].unpacked_size = detected.entries[i].unpacked_size;
-            }
-        }
-    }
-}
-
-fn gameResUpdate(game: *Game, num: u16) void {
-    if (num > 16000) {
-        game.res.next_part = @enumFromInt(num);
-        return;
-    }
-
-    var me = &game.res.mem_list[num];
-    if (me.status == .null) {
-        me.status = .toload;
-        gameResLoad(game);
-    }
-}
-
-fn gameResReadEntries(game: *Game) !void {
-    switch (game.res.data_type) {
-        .amiga, .atari => {
-            assert(game.res.num_mem_list > 0);
-        },
-        .dos => {
-            game.res.has_password_screen = false; // DOS demo versions do not have the resources
-            const mem_list = game.res.data.mem_list orelse @panic("mem list is mandatory for pc version");
-            var stream = std.io.fixedBufferStream(mem_list);
-            var reader = stream.reader();
-            while (true) {
-                const status: GameResStatus = @enumFromInt(try reader.readByte());
-                if (status == .uninit) {
-                    game.res.has_password_screen = game.res.data.banks.bank08 != null;
-                    return;
-                }
-                assert(game.res.num_mem_list < game.res.mem_list.len);
-                var me = &game.res.mem_list[game.res.num_mem_list];
-                me.status = status;
-                me.type = @enumFromInt(try reader.readByte());
-                me.buf_ptr = &[0]u8{};
-                _ = try reader.readInt(u32, .big);
-                me.rank_num = try reader.readByte();
-                me.bank_num = try reader.readByte();
-                me.bank_pos = try reader.readInt(u32, .big);
-                me.packed_size = try reader.readInt(u32, .big);
-                me.unpacked_size = try reader.readInt(u32, .big);
-                game.res.num_mem_list += 1;
-            }
-        },
-    }
-}
-
-fn gameResInvalidate(game: *Game) void {
-    for (&game.res.mem_list) |*me| {
-        if (@intFromEnum(me.type) <= 2 or @intFromEnum(me.type) > 6) {
-            me.*.status = .null;
-        }
-    }
-    game.res.script_cur = game.res.script_bak;
-    game.video.current_pal = 0xFF;
-}
-
 fn resSoundRead(user_data: ?*anyopaque, id: u16) ?[]const u8 {
     var game: *Game = @alignCast(@ptrCast(user_data));
     const me = &game.res.mem_list[id];
@@ -931,7 +648,7 @@ fn opJmpIfVar(game: *Game) void {
     }
 }
 
-fn fixupPaletteChangeScreen(game: *Game, part: GamePart, screen: i32) void {
+fn fixupPaletteChangeScreen(game: *Game, part: GameRes.GamePart, screen: i32) void {
     var pal: ?u8 = null;
     switch (part) {
         .cite => if (screen == 0x47) { // bitmap resource #68
@@ -1166,9 +883,9 @@ fn opUpdateResources(game: *Game) void {
     vm_log.debug("Script::op_updateResources({})", .{num});
     if (num == 0) {
         game.audio.stopAll();
-        gameResInvalidate(game);
+        game.res.invalidate();
     } else {
-        gameResUpdate(game, num);
+        game.res.update(num);
     }
 }
 
