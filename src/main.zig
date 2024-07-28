@@ -6,6 +6,9 @@ const gfx = @import("common/gfx.zig");
 const prof = @import("common/prof.zig");
 const audio = @import("common/audio.zig");
 const raw = @import("raw/raw.zig");
+const Game = raw.Game;
+const GameLang = Game.GameLang;
+const GameInput = Game.GameInput;
 const ui = @import("ui/ui.zig");
 const slog = sokol.log;
 const sapp = sokol.app;
@@ -38,7 +41,7 @@ const state = struct {
     const GameOptions = struct {
         part_num: u16 = 16001,
         use_ega: bool = false,
-        lang: raw.game.GameLang = .us,
+        lang: GameLang = .us,
         enable_protection: bool = false,
         data: ?raw.GameData = null,
     };
@@ -46,7 +49,7 @@ const state = struct {
     var ready: bool = false;
     var data: raw.GameData = .{};
     var options: GameOptions = .{};
-    var game: raw.game.Game = undefined;
+    var game: Game = undefined;
     var frame_time_us: u32 = 0;
 };
 
@@ -68,7 +71,7 @@ export fn init() void {
     audio.init(.{});
     prof.init();
     time.init();
-    raw.game.gameInit(&state.game, .{
+    Game.init(&state.game, .{
         .audio = .{
             .sample_rate = audio.sampleRate(),
             .callback = audio.push,
@@ -87,7 +90,7 @@ export fn init() void {
     // initialize sokol-gfx
     gfx.init(.{
         .border = gfx.DEFAULT_BORDER,
-        .display = raw.game.displayInfo(&state.game),
+        .display = state.game.displayInfo(),
         .pixel_aspect = .{ .width = 2, .height = 2 },
     });
     ui.init(.{ .game = &state.game });
@@ -100,11 +103,11 @@ export fn frame() void {
     ui.draw();
 
     time.emuStart();
-    raw.game.gameExec(&state.game, state.frame_time_us / 1000) catch @panic("gameexec failed");
+    state.game.exec(state.frame_time_us / 1000) catch @panic("gameexec failed");
     prof.pushMicroSeconds(.EMU, time.emuEnd());
 
     gfx.draw(.{
-        .display = raw.game.displayInfo(&state.game),
+        .display = state.game.displayInfo(),
         .status = .{
             .frame_stats = prof.stats(.FRAME),
             .emu_stats = prof.stats(.EMU),
@@ -124,11 +127,11 @@ export fn event(ev: [*c]const sapp.Event) void {
         .CHAR => {
             const c = ev.*.char_code;
             if ((c > 0x20) and (c < 0x7F)) {
-                raw.game.gameCharPressed(&state.game, @truncate(c));
+                state.game.charPressed(@truncate(c));
             }
         },
         .KEY_DOWN, .KEY_UP => {
-            const input: ?raw.game.GameInput = switch (ev.*.key_code) {
+            const input: ?GameInput = switch (ev.*.key_code) {
                 .LEFT => .left,
                 .RIGHT => .right,
                 .DOWN => .down,
@@ -142,8 +145,11 @@ export fn event(ev: [*c]const sapp.Event) void {
                 else => null,
             };
             if (input) |key| {
-                const gameKeyFunc = if (ev.*.type == .KEY_DOWN) &raw.game.gameKeyDown else &raw.game.gameKeyUp;
-                gameKeyFunc(&state.game, key);
+                if (ev.*.type == .KEY_DOWN) {
+                    state.game.keyDown(key);
+                } else {
+                    state.game.keyUp(key);
+                }
             }
         },
         else => {},

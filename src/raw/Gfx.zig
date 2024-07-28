@@ -23,13 +23,13 @@ pub const GameQuadStrip = struct {
 };
 
 const GameFramebuffer = struct {
-    buffer: [GAME_WIDTH * GAME_HEIGHT]u8,
+    buffer: [GAME_WIDTH * GAME_HEIGHT]u8 = [1]u8{0} ** (GAME_WIDTH * GAME_HEIGHT),
 };
 
-fb: [GAME_WIDTH * GAME_HEIGHT]u8, // frame buffer: this where is stored the image with indexed color
-fbs: [4]GameFramebuffer,
-palette: [256]u32, // palette containing 16 RGBA colors
-draw_page: u2,
+fb: [GAME_WIDTH * GAME_HEIGHT]u8 = [1]u8{0} ** (GAME_WIDTH * GAME_HEIGHT), // frame buffer: this where is stored the image with indexed color
+fbs: [4]GameFramebuffer = [1]GameFramebuffer{.{}} ** 4,
+palette: [256]u32 = [1]u32{0} ** 256, // palette containing 16 RGBA colors
+draw_page: u2 = 0,
 fix_up_palette: bool = false, // redraw all primitives on setPal script call
 const Self = @This();
 

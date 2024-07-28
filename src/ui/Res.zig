@@ -38,7 +38,7 @@ snd_frequency: c_int = 15,
 snd_volume: c_int = 32,
 use_ega: bool = false,
 dirty: bool = false,
-game: *raw.game.Game,
+game: *raw.Game,
 nearest_sampler: sg.Sampler = .{},
 tex_fb: ?*anyopaque = null,
 const Self = @This();
@@ -49,7 +49,7 @@ const ResStat = struct {
 };
 
 const Desc = struct {
-    game: *raw.game.Game,
+    game: *raw.Game,
     x: f32 = 0.0,
     y: f32 = 0.0, // initial window pos
     w: f32 = 200.0,
@@ -136,7 +136,7 @@ fn drawPreview(self: *Self) void {
 }
 
 /// Update the palette from the specified resource item.
-fn updatePalette(self: *Self, item: raw.game.GameRes.GameMemEntry) void {
+fn updatePalette(self: *Self, item: raw.GameMemEntry) void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     var buf = self.readResItem(item, gpa.allocator());
     defer gpa.allocator().free(buf);
@@ -346,7 +346,7 @@ fn drawResList(self: *Self) void {
 }
 
 /// Read the data of the specified resource.
-fn readResItem(self: *Self, item: raw.game.GameRes.GameMemEntry, allocator: std.mem.Allocator) []const u8 {
+fn readResItem(self: *Self, item: raw.GameMemEntry, allocator: std.mem.Allocator) []const u8 {
     const buf: []u8 = allocator.alloc(u8, item.unpacked_size) catch @panic("no more memory :(");
     _ = self.game.res.readBank(&item, buf);
     return buf;
@@ -389,6 +389,6 @@ fn drawSound(self: *Self) void {
     const frequencies = "3326\u{0}3523\u{0}3728\u{0}3950\u{0}4181\u{0}4430\u{0}4697\u{0}4971\u{0}5279\u{0}5593\u{0}5926\u{0}6279\u{0}6653\u{0}7046\u{0}7457\u{0}7901\u{0}8363\u{0}8860\u{0}9395\u{0}9943\u{0}10559\u{0}11186\u{0}11852\u{0}12559\u{0}13306\u{0}14092\u{0}14914\u{0}15838\u{0}16726\u{0}17720\u{0}18839\u{0}19886\u{0}21056\u{0}22372\u{0}23705\u{0}25031\u{0}26515\u{0}28185\u{0}29829\u{0}\u{0}";
     _ = ig.igCombo_Str("Frequency", &self.snd_frequency, frequencies, 0);
     if (ig.igButton("Play", .{})) {
-        raw.game.debugSndPlaySound(self.game, self.preview_data.?.sound.data, @intCast(self.snd_frequency), @intCast(self.snd_volume));
+        self.game.debugSndPlaySound(self.preview_data.?.sound.data, @intCast(self.snd_frequency), @intCast(self.snd_volume));
     }
 }

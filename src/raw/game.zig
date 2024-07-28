@@ -64,41 +64,40 @@ const GameStrEntry = struct {
     str: []const u8,
 };
 
-pub const Game = struct {
-    const Input = struct {
-        dir_mask: GameInputDir,
-        action: bool, // run,shoot
-        code: bool,
-        pause: bool,
-        quit: bool,
-        back: bool,
-        last_char: u8,
-        demo_joy: DemoJoy,
-    };
-
-    valid: bool,
-    enable_protection: bool,
-    // TODO: debug:game_debug_t,
-    res: GameRes,
-    strings_table: Strings,
-    part_num: u16,
-    elapsed: u32,
-    sleep: u32,
-
-    gfx: Gfx,
-    audio: audio.Audio,
-    video: Video,
-    vm: Vm,
-    input: Input,
-
-    title: [:0]const u8, // title of the game
+const Input = struct {
+    dir_mask: GameInputDir,
+    action: bool, // run,shoot
+    code: bool,
+    pause: bool,
+    quit: bool,
+    back: bool,
+    last_char: u8,
+    demo_joy: DemoJoy,
 };
+
+valid: bool = false,
+enable_protection: bool = false,
+// TODO: debug:game_debug_t,
+res: GameRes = undefined,
+strings_table: Strings = undefined,
+part_num: u16 = 0,
+elapsed: u32 = 0,
+sleep: u32 = 0,
+
+gfx: Gfx = .{},
+audio: audio.Audio = undefined,
+video: Video = undefined,
+vm: Vm = undefined,
+input: Input = undefined,
+
+title: [:0]const u8 = undefined, // title of the game
+const Self = @This();
 
 const video_log = std.log.scoped(.video);
 const vm_log = std.log.scoped(.vm);
 const snd_log = std.log.scoped(.sound);
 
-pub fn displayInfo(game: ?*Game) glue.DisplayInfo {
+pub fn displayInfo(game: ?*Self) glue.DisplayInfo {
     return .{
         .fb = .{
             .dim = .{
@@ -118,13 +117,14 @@ pub fn displayInfo(game: ?*Game) glue.DisplayInfo {
     };
 }
 
-pub fn gameInit(game: *Game, desc: GameDesc) !void {
+pub fn init(game: *Self, desc: GameDesc) !void {
     //assert(game and desc);
     //if (desc.debug.callback.func) { GAME_ASSERT(desc.debug.stopped); }
     game.valid = true;
     game.enable_protection = desc.enable_protection;
     // game.debug = desc.debug;
     game.part_num = desc.part_num;
+    game.strings_table = Strings.init(desc.lang);
     game.res.lang = desc.lang;
     game.audio.init(desc.audio.callback);
 
@@ -161,8 +161,6 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
         .updateDisplay = updateDisplay,
     });
 
-    game.strings_table = Strings.init(game.res.lang);
-
     if (game.enable_protection and (game.res.data_type != .dos or game.res.has_password_screen)) {
         game.part_num = @intFromEnum(GameRes.GamePart.copy_protection);
     }
@@ -172,11 +170,11 @@ pub fn gameInit(game: *Game, desc: GameDesc) !void {
     const num = game.part_num;
     const part: GameRes.GamePart = if (num < 36) @enumFromInt(restart_pos[num * 2]) else @enumFromInt(num);
     const part_pos = if (num < 36) restart_pos[num * 2 + 1] else -1;
-    restartAt(game, part, part_pos);
+    game.restartAt(part, part_pos);
     game.title = if (game.res.data_type == .dos and game.res.lang == .us) GAME_TITLE_US else GAME_TITLE_EU;
 }
 
-pub fn gameExec(game: *Game, ms: u32) !void {
+pub fn exec(game: *Self, ms: u32) !void {
     game.elapsed += ms;
 
     if (game.sleep > 0) {
@@ -216,7 +214,7 @@ pub fn gameExec(game: *Game, ms: u32) !void {
     game.sleep += 20; // wait 20 ms (50 Hz)
 }
 
-pub fn restartAt(game: *Game, part: GameRes.GamePart, pos: i16) void {
+pub fn restartAt(game: *Self, part: GameRes.GamePart, pos: i16) void {
     game.audio.stopAll();
     if (game.res.data_type == .dos and part == .copy_protection) {
         // VAR(0x54) indicates if the "Out of this World" title screen should be presented
@@ -253,7 +251,47 @@ pub fn restartAt(game: *Game, part: GameRes.GamePart, pos: i16) void {
     }
 }
 
-fn gameVmSetupTasks(game: *Game) void {
+pub fn keyDown(game: *Self, input: GameInput) void {
+    switch (input) {
+        .left => game.input.dir_mask.left = true,
+        .right => game.input.dir_mask.right = true,
+        .up => game.input.dir_mask.up = true,
+        .down => game.input.dir_mask.down = true,
+        .action => game.input.action = true,
+        .back => game.input.back = true,
+        .code => game.input.code = true,
+        .pause => game.input.pause = true,
+    }
+}
+
+pub fn keyUp(game: *Self, input: GameInput) void {
+    // assert(game && game->valid);
+    switch (input) {
+        .left => game.input.dir_mask.left = false,
+        .right => game.input.dir_mask.right = false,
+        .up => game.input.dir_mask.up = false,
+        .down => game.input.dir_mask.down = false,
+        .action => game.input.action = false,
+        .back => game.input.back = false,
+        .code => game.input.code = false,
+        .pause => game.input.pause = false,
+    }
+}
+
+pub fn charPressed(game: *Self, c: u8) void {
+    // GAME_ASSERT(game && game->valid);
+    game.input.last_char = c;
+}
+
+pub fn debugSndPlaySound(game: *Self, buf: []const u8, frequency: u8, volume: u8) void {
+    if (volume == 0) {
+        game.audio.stopSound(4);
+        return;
+    }
+    gameAudioPlaySoundRaw(game, 4, buf, frequency, volume);
+}
+
+fn gameVmSetupTasks(game: *Self) void {
     if (game.res.next_part) |part| {
         restartAt(game, part, -1);
         game.res.next_part = null;
@@ -261,7 +299,7 @@ fn gameVmSetupTasks(game: *Game) void {
     game.vm.setupTasks();
 }
 
-fn gameVmExecuteTask(game: *Game) !void {
+fn gameVmExecuteTask(game: *Self) !void {
     const opcode = game.vm.ptr.fetchByte();
     if ((opcode & 0x80) != 0) {
         const off = ((@as(u16, opcode) << 8) | game.vm.ptr.fetchByte()) << 1;
@@ -323,7 +361,7 @@ fn gameVmExecuteTask(game: *Game) !void {
     }
 }
 
-fn gameVmRun(game: *Game) !bool {
+fn gameVmRun(game: *Self) !bool {
     var i = game.vm.current_task;
     if (!game.input.quit and game.vm.tasks[i].state == 0) {
         const n = game.vm.tasks[i].pc;
@@ -362,7 +400,7 @@ fn gameVmRun(game: *Game) !bool {
     return result;
 }
 
-fn gameVmUpdateInput(game: *Game) void {
+fn gameVmUpdateInput(game: *Self) void {
     if (game.res.current_part == .password) {
         const c = game.input.last_char;
         if (c == 8 or c == 0 or (c >= 'a' and c <= 'z')) {
@@ -430,7 +468,7 @@ fn gameVmUpdateInput(game: *Game) void {
     }
 }
 
-fn gameAudioSfxLoadModule(game: *Game, res_num: u16, delay: u16, pos: u8) void {
+fn gameAudioSfxLoadModule(game: *Self, res_num: u16, delay: u16, pos: u8) void {
     snd_log.debug("SfxPlayer::loadSfxModule(0x{X:0>2}, {}, {})", .{ res_num, delay, pos });
     const me = &game.res.mem_list[res_num];
     if (me.status == .loaded and me.type == .music) {
@@ -440,55 +478,15 @@ fn gameAudioSfxLoadModule(game: *Game, res_num: u16, delay: u16, pos: u8) void {
     }
 }
 
-fn gameAudioPlaySoundRaw(game: *Game, channel: u3, data: []const u8, frequency: i32, volume: u8) void {
+fn gameAudioPlaySoundRaw(game: *Self, channel: u3, data: []const u8, frequency: i32, volume: u8) void {
     const vol = if (volume > 63) 63 else volume;
     const freq = if (frequency > 39) 39 else frequency;
     game.audio.channels[channel].initRaw(data, @intCast(freq), vol, audio.GAME_MIX_FREQ);
 }
 
-pub fn gameKeyDown(game: *Game, input: GameInput) void {
-    switch (input) {
-        .left => game.input.dir_mask.left = true,
-        .right => game.input.dir_mask.right = true,
-        .up => game.input.dir_mask.up = true,
-        .down => game.input.dir_mask.down = true,
-        .action => game.input.action = true,
-        .back => game.input.back = true,
-        .code => game.input.code = true,
-        .pause => game.input.pause = true,
-    }
-}
-
-pub fn gameKeyUp(game: *Game, input: GameInput) void {
-    // assert(game && game->valid);
-    switch (input) {
-        .left => game.input.dir_mask.left = false,
-        .right => game.input.dir_mask.right = false,
-        .up => game.input.dir_mask.up = false,
-        .down => game.input.dir_mask.down = false,
-        .action => game.input.action = false,
-        .back => game.input.back = false,
-        .code => game.input.code = false,
-        .pause => game.input.pause = false,
-    }
-}
-
-pub fn gameCharPressed(game: *Game, c: u8) void {
-    // GAME_ASSERT(game && game->valid);
-    game.input.last_char = c;
-}
-
-pub fn debugSndPlaySound(game: *Game, buf: []const u8, frequency: u8, volume: u8) void {
-    if (volume == 0) {
-        game.audio.stopSound(4);
-        return;
-    }
-    gameAudioPlaySoundRaw(game, 4, buf, frequency, volume);
-}
-
-pub fn sndPlaySound(user_data: ?*anyopaque, resNum: u16, frequency: u8, volume: u8, chan: u3) void {
+fn sndPlaySound(user_data: ?*anyopaque, resNum: u16, frequency: u8, volume: u8, chan: u3) void {
     snd_log.debug("snd_playSound(0x{X}, {}, {}, {})", .{ resNum, frequency, volume, chan });
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     if (volume == 0) {
         game.audio.stopSound(chan);
         return;
@@ -500,7 +498,7 @@ pub fn sndPlaySound(user_data: ?*anyopaque, resNum: u16, frequency: u8, volume: 
 }
 
 fn sndPlayMusic(user_data: ?*anyopaque, resNum: u16, delay: u16, pos: u8) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     snd_log.debug("snd_playMusic(0x{X}, {}, {})", .{ resNum, delay, pos });
     // DT_AMIGA, DT_ATARI, DT_DOS
     if (resNum != 0) {
@@ -514,7 +512,7 @@ fn sndPlayMusic(user_data: ?*anyopaque, resNum: u16, delay: u16, pos: u8) void {
     }
 }
 
-fn inpHandleSpecialKeys(game: *Game) void {
+fn inpHandleSpecialKeys(game: *Self) void {
     if (game.input.pause) {
         if (game.res.current_part != .copy_protection and game.res.current_part != .intro) {
             game.input.pause = false;
@@ -535,7 +533,7 @@ fn inpHandleSpecialKeys(game: *Game) void {
 }
 
 fn updateResources(user_data: ?*anyopaque, num: u16) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     if (num == 0) {
         game.audio.stopAll();
         game.res.invalidate();
@@ -545,7 +543,7 @@ fn updateResources(user_data: ?*anyopaque, num: u16) void {
 }
 
 fn updateDisplay(user_data: ?*anyopaque, page: u8) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     vm_log.debug("Script::op_updateDisplay({})", .{page});
     inpHandleSpecialKeys(game);
 
@@ -571,49 +569,49 @@ fn updateDisplay(user_data: ?*anyopaque, page: u8) void {
 }
 
 fn setPalette(user_data: ?*anyopaque, pal: u8) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     if (!game.gfx.fix_up_palette or game.res.current_part != .intro or (pal != 10 and pal != 16)) {
         game.video.next_pal = @intCast(pal);
     }
 }
 
 fn setVideoWorkPagePtr(user_data: ?*anyopaque, page: u8) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     game.video.setWorkPagePtr(page);
 }
 
 fn fillPage(user_data: ?*anyopaque, page: u8, color: u8) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     game.video.fillPage(page, color);
 }
 
 fn copyPage(user_data: ?*anyopaque, src: u8, dst: u8, vscroll: i16) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     game.video.copyPage(src, dst, vscroll);
 }
 
 fn drawString(user_data: ?*anyopaque, color: u8, x: u16, y: u16, str_id: u16) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     game.video.drawString(color, x, y, game.strings_table.find(str_id));
 }
 
 fn getCurrentPart(user_data: ?*anyopaque) GameRes.GamePart {
-    const game: *Game = @alignCast(@ptrCast(user_data));
+    const game: *Self = @alignCast(@ptrCast(user_data));
     return game.res.current_part;
 }
 
 fn changePal(user_data: ?*anyopaque, pal: u8) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     game.video.changePal(game.res.seg_video_pal, pal);
 }
 
 fn sfxPlayerCallback(user_data: ?*anyopaque, pat_note2: u16) void {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     game.vm.vars[Vm.GAME_VAR_MUSIC_SYNC] = @bitCast(pat_note2);
 }
 
 fn resSoundRead(user_data: ?*anyopaque, id: u16) ?[]const u8 {
-    var game: *Game = @alignCast(@ptrCast(user_data));
+    var game: *Self = @alignCast(@ptrCast(user_data));
     const me = &game.res.mem_list[id];
     if (me.status == .loaded and me.type == .sound) {
         return me.buf_ptr;

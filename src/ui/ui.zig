@@ -14,11 +14,11 @@ const raw_dasm = @import("rawdasm.zig");
 const util = @import("util.zig");
 
 const Desc = struct {
-    game: *raw.game.Game,
+    game: *raw.Game,
 };
 
 const state = struct {
-    var game: *raw.game.Game = undefined;
+    var game: *raw.Game = undefined;
     var res: Res = undefined;
     var video: Video = .{};
     var audio: Audio = .{};
@@ -108,12 +108,12 @@ fn drawMenu() void {
     if (ig.igBeginMainMenuBar()) {
         if (ig.igBeginMenu("System", true)) {
             if (ig.igBeginMenu("Restart at", true)) {
-                const parts = [_]raw.game.GameRes.GamePart{ .intro, .water, .prison, .cite, .arene, .luxe, .final, .password, .copy_protection };
+                const parts = [_]raw.GamePart{ .intro, .water, .prison, .cite, .arene, .luxe, .final, .password, .copy_protection };
                 const part_names = [_][:0]const u8{ "Intro", "Water", "Prison", "Cite", "Arene", "Luxe", "Final", "Password", "Copy Protection" };
                 for (parts, 0..) |part, i| {
                     var part_selected = state.game.res.current_part == part;
                     if (ig.igMenuItem_BoolPtr(part_names[i], 0, &part_selected, true)) {
-                        raw.game.restartAt(state.game, part, -1);
+                        state.game.restartAt(part, -1);
                     }
                 }
                 ig.igEndMenu();

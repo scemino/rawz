@@ -5,12 +5,12 @@ y: f32 = 0.0,
 w: f32 = 0.0,
 h: f32 = 0.0,
 open: bool = true,
-game: *raw.game.Game = undefined,
+game: *raw.Game = undefined,
 
 const Self = @This();
 
 const Desc = struct {
-    game: *raw.game.Game,
+    game: *raw.Game,
     x: f32 = 0.0,
     y: f32 = 0.0, // initial window pos
     w: f32 = 200.0,

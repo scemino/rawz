@@ -12,11 +12,11 @@ open: bool = true,
 nearest_sampler: sg.Sampler = .{},
 tex_fb: [4]?*anyopaque = [1]?*anyopaque{null} ** 4,
 pixel_buffer: [raw.GAME_WIDTH * raw.GAME_HEIGHT]u32 = [1]u32{0} ** (raw.GAME_WIDTH * raw.GAME_HEIGHT),
-game: *raw.game.Game = undefined,
+game: *raw.Game = undefined,
 const Self = @This();
 
 const Desc = struct {
-    game: *raw.game.Game,
+    game: *raw.Game,
     x: f32 = 0.0,
     y: f32 = 0.0, // initial window pos
     w: f32 = 200.0,
