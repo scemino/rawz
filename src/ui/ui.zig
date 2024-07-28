@@ -104,6 +104,10 @@ fn getStr(id: u16, user_data: ?*anyopaque) []const u8 {
     return state.game.strings_table.find(id);
 }
 
+fn resExists(id: u16) bool {
+    return state.game.res.data.banks.get(state.game.res.mem_list[id].bank_num - 1) != null;
+}
+
 fn drawMenu() void {
     if (ig.igBeginMainMenuBar()) {
         if (ig.igBeginMenu("System", true)) {
@@ -111,6 +115,11 @@ fn drawMenu() void {
                 const parts = [_]raw.GamePart{ .intro, .water, .prison, .cite, .arene, .luxe, .final, .password, .copy_protection };
                 const part_names = [_][:0]const u8{ "Intro", "Water", "Prison", "Cite", "Arene", "Luxe", "Final", "Password", "Copy Protection" };
                 for (parts, 0..) |part, i| {
+                    // check if part exists in the resources
+                    const icod = raw.Res.mem_list_parts[@intFromEnum(part) - 16000][1];
+                    if (!resExists(icod)) continue;
+                    const ivd2 = raw.Res.mem_list_parts[@intFromEnum(part) - 16000][3];
+                    if (ivd2 != 0 and !resExists(ivd2)) continue;
                     var part_selected = state.game.res.current_part == part;
                     if (ig.igMenuItem_BoolPtr(part_names[i], 0, &part_selected, true)) {
                         state.game.restartAt(part, -1);

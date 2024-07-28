@@ -283,6 +283,8 @@ fn drawResList(self: *Self) void {
             for (0..self.game.res.num_mem_list) |i| {
                 const e = &self.game.res.mem_list[i];
                 if (e.status == .uninit) break;
+                // skip resource if its bank does not exist
+                if (self.game.res.data.banks.get(e.bank_num - 1) == null) continue;
 
                 if (self.filters[@intFromEnum(e.type)]) continue;
                 if (self.game.res.data.banks.get(e.bank_num - 1) == null) continue;

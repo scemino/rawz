@@ -13,7 +13,7 @@ const assert = std.debug.assert;
 pub const GAME_MEM_BLOCK_SIZE = 1 * 1024 * 1024;
 pub const GAME_ENTRIES_COUNT = 146;
 
-const mem_list_parts = [_][4]u8{
+pub const mem_list_parts = [_][4]u8{
     // ipal, icod, ivd1, ivd2
     .{ 0x14, 0x15, 0x16, 0x00 }, // 16000 - protection screens
     .{ 0x17, 0x18, 0x19, 0x00 }, // 16001 - introduction
