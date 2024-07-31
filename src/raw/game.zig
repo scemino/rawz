@@ -125,25 +125,21 @@ pub fn init(game: *Self, desc: GameDesc) !void {
     // game.debug = desc.debug;
     game.part_num = desc.part_num;
     game.strings_table = Strings.init(desc.lang);
-    game.res.lang = desc.lang;
+    game.res = try GameRes.init(.{
+        .lang = desc.lang,
+        .data = desc.data,
+        .user_data = &game.video,
+        .copy_bitmap = copyBitmap,
+        .set_palette = setVideoPalette,
+    });
     game.audio.init(desc.audio.callback);
 
-    game.res.data = desc.data;
     if (game.res.data.demo3_joy) |demo| {
         game.input.demo_joy.read(demo);
     }
 
-    game.res.detectVersion();
     game.video = Video.init(&game.gfx, game.res.data_type, desc.use_ega);
-    game.res.video = &game.video;
-    game.res.has_password_screen = true;
-    game.res.script_bak = 0;
-    game.res.script_cur = 0;
-    game.res.vid_cur = GameRes.GAME_MEM_BLOCK_SIZE - (Gfx.GAME_WIDTH * Gfx.GAME_HEIGHT / 2); // 4bpp bitmap
-    try game.res.readEntries();
-
     game.gfx.setWorkPagePtr(2);
-
     game.vm = Vm.init(.{
         .data_type = game.res.data_type,
         .user_data = game,
@@ -289,6 +285,16 @@ pub fn debugSndPlaySound(game: *Self, buf: []const u8, frequency: u8, volume: u8
         return;
     }
     gameAudioPlaySoundRaw(game, 4, buf, frequency, volume);
+}
+
+fn copyBitmap(user_data: ?*anyopaque, src: []const u8) void {
+    const video: *Video = @alignCast(@ptrCast(user_data));
+    video.copyBitmapPtr(src);
+}
+
+fn setVideoPalette(user_data: ?*anyopaque, pal: u8) void {
+    const video: *Video = @alignCast(@ptrCast(user_data));
+    video.current_pal = pal;
 }
 
 fn gameVmSetupTasks(game: *Self) void {

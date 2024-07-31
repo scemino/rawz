@@ -1,8 +1,8 @@
 const std = @import("std");
 const GameData = @import("GameData.zig");
+const Gfx = @import("Gfx.zig");
 const mementries = @import("mementries.zig");
 const Strings = @import("Strings.zig");
-const Video = @import("Video.zig");
 pub const GameDataType = mementries.GameDataType;
 pub const GameLang = Strings.GameLang;
 pub const byteKillerUnpack = @import("unpack.zig").byteKillerUnpack;
@@ -69,26 +69,49 @@ pub const GameMemEntry = struct {
     unpacked_size: u32, // 0x12
 };
 
-mem_list: [GAME_ENTRIES_COUNT]GameMemEntry,
-num_mem_list: u16,
-mem: [GAME_MEM_BLOCK_SIZE]u8,
-current_part: GamePart,
-next_part: ?GamePart,
-script_bak: usize,
-script_cur: usize,
-vid_cur: usize,
-use_seg_video2: bool,
-seg_video_pal: []u8,
-seg_code: []u8,
-seg_code_size: u16,
-seg_video1: []u8,
-seg_video2: []u8,
-has_password_screen: bool,
-data_type: GameDataType,
+mem_list: [GAME_ENTRIES_COUNT]GameMemEntry = undefined,
+num_mem_list: u16 = 0,
+mem: [GAME_MEM_BLOCK_SIZE]u8 = undefined,
+current_part: GamePart = undefined,
+next_part: ?GamePart = null,
+script_bak: usize = 0,
+script_cur: usize = 0,
+vid_cur: usize = GAME_MEM_BLOCK_SIZE - (Gfx.GAME_WIDTH * Gfx.GAME_HEIGHT / 2), // 4bpp bitmap,
+use_seg_video2: bool = false,
+seg_video_pal: []u8 = undefined,
+seg_code: []u8 = undefined,
+seg_code_size: u16 = 0,
+seg_video1: []u8 = undefined,
+seg_video2: []u8 = undefined,
+has_password_screen: bool = true,
+data_type: GameDataType = undefined,
 data: GameData,
+user_data: ?*anyopaque,
+copy_bitmap: *const fn (user_data: ?*anyopaque, src: []const u8) void,
+set_palette: *const fn (user_data: ?*anyopaque, pal: u8) void,
 lang: GameLang,
-video: *Video = undefined,
 const Self = @This();
+
+const Context = struct {
+    lang: GameLang,
+    data: GameData,
+    user_data: ?*anyopaque,
+    copy_bitmap: *const fn (user_data: ?*anyopaque, src: []const u8) void,
+    set_palette: *const fn (user_data: ?*anyopaque, pal: u8) void,
+};
+
+pub fn init(context: Context) !Self {
+    var self = Self{
+        .lang = context.lang,
+        .data = context.data,
+        .user_data = context.user_data,
+        .copy_bitmap = context.copy_bitmap,
+        .set_palette = context.set_palette,
+    };
+    self.detectVersion();
+    try self.readEntries();
+    return self;
+}
 
 pub fn readBank(self: *Self, me: *const GameMemEntry, dst_buf: []u8) bool {
     if (me.bank_num > 0xd)
@@ -145,7 +168,7 @@ pub fn load(self: *Self) void {
                 bank_log.debug("Resource::load() bufPos=0x{X} size={} type={} pos=0x{X} bankNum={}", .{ self.mem.len - mem_ptr.len, me.packed_size, me.type, me.bank_pos, me.bank_num });
                 if (self.readBank(me, mem_ptr)) {
                     if (me.type == .bitmap) {
-                        self.video.copyBitmapPtr(self.mem[self.vid_cur..]);
+                        self.copy_bitmap(self.user_data, self.mem[self.vid_cur..]);
                         me.status = .null;
                     } else {
                         me.buf_ptr = mem_ptr;
@@ -206,7 +229,7 @@ pub fn invalidate(self: *Self) void {
         }
     }
     self.script_cur = self.script_bak;
-    self.video.current_pal = 0xFF;
+    self.set_palette(self.user_data, 0xFF);
 }
 
 pub fn invalidateAll(self: *Self) void {
@@ -214,7 +237,7 @@ pub fn invalidateAll(self: *Self) void {
         self.mem_list[i].status = .null;
     }
     self.script_cur = 0;
-    self.video.current_pal = 0xFF;
+    self.set_palette(self.user_data, 0xFF);
 }
 
 pub fn setupPart(self: *Self, id: usize) void {
@@ -265,7 +288,7 @@ pub fn update(self: *Self, num: u16) void {
     }
 }
 
-pub fn detectVersion(self: *Self) void {
+fn detectVersion(self: *Self) void {
     if (self.data.mem_list) |_| {
         // only DOS game has a memlist.bin file
         self.data_type = .dos;
