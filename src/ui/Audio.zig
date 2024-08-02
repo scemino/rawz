@@ -1,5 +1,5 @@
 const ig = @import("cimgui");
-const raw = @import("../raw/raw.zig");
+const raw = @import("raw");
 x: f32 = 0.0,
 y: f32 = 0.0,
 w: f32 = 0.0,

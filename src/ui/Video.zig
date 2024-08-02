@@ -1,4 +1,4 @@
-const raw = @import("../raw/raw.zig");
+const raw = @import("raw");
 const ig = @import("cimgui");
 const util = @import("util.zig");
 const sokol = @import("sokol");

@@ -1,6 +1,6 @@
 const std = @import("std");
 const saudio = @import("sokol").audio;
-const glue = @import("../common/glue.zig");
+const glue = @import("common").glue;
 const DemoJoy = @import("DemoJoy.zig");
 const Strings = @import("Strings.zig");
 const GameFrac = @import("GameFrac.zig");
@@ -321,8 +321,8 @@ fn gameVmExecuteTask(game: *Self) !void {
         game.video.drawShape(0xFF, 64, pt);
     } else if ((opcode & 0x40) == 0x40) {
         var pt: Gfx.GamePoint = undefined;
-        const offsetHi = game.vm.ptr.fetchByte();
-        const off = ((@as(u16, offsetHi) << 8) | game.vm.ptr.fetchByte()) << 1;
+        const offset_hi = game.vm.ptr.fetchByte();
+        const off = ((@as(u16, offset_hi) << 8) | game.vm.ptr.fetchByte()) << 1;
         pt.x = game.vm.ptr.fetchByte();
         game.res.use_seg_video2 = false;
         if ((opcode & 0x20) == 0) {

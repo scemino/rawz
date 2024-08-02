@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const builtin = @import("builtin");
 
 mem_list: ?[]const u8 = null, // contains content of memlist.bin file if present
@@ -45,11 +46,11 @@ const GameBanks = struct {
 
 const Banks = [16]?[]const u8;
 
-pub fn readData(path: []const u8) ?Self {
+pub fn readData(path: []const u8, allocator: Allocator) ?Self {
     const stat = std.fs.cwd().statFile(path) catch return null;
     const maybe_banks: Banks = switch (stat.kind) {
-        .directory => readBanksFromDirectory(path),
-        .file => readBanksFromTar(path),
+        .directory => readBanksFromDirectory(path, allocator),
+        .file => readBanksFromTar(path, allocator),
         else => return null,
     };
     return toGameData(maybe_banks);
@@ -77,7 +78,7 @@ fn toGameData(banks: Banks) ?Self {
     };
 }
 
-fn readBanksFromTar(path: []const u8) Banks {
+fn readBanksFromTar(path: []const u8, allocator: Allocator) Banks {
     var file = std.fs.cwd().openFile(path, .{}) catch @panic("Failed to open dir");
     const reader = file.reader();
     var filename_buffer: [std.fs.max_path_bytes]u8 = undefined;
@@ -87,32 +88,26 @@ fn readBanksFromTar(path: []const u8) Banks {
         .link_name_buffer = &link_name_buffer,
     });
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-
-    // yerate through the tar file to see if files match
+    // iterate through the tar file to see if files match
     var banks: Banks = [1]?[]const u8{null} ** 16;
     while (it.next() catch @panic("Failed to iterate tar")) |entry| {
         var out_str: [16]u8 = undefined;
         var entry_reader = entry.reader();
         if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..4]), "bank")) {
             const index = std.fmt.parseInt(u8, entry.name[4..], 16) catch continue;
-            banks[index] = entry_reader.readAllAlloc(gpa.allocator(), 246 * 1024) catch @panic("Failed to read file");
+            banks[index] = entry_reader.readAllAlloc(allocator, 246 * 1024) catch @panic("Failed to read file");
         } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name), "memlist.bin")) {
-            banks[0xE] = entry_reader.readAllAlloc(gpa.allocator(), 246 * 1024) catch @panic("Failed to read file");
+            banks[0xE] = entry_reader.readAllAlloc(allocator, 246 * 1024) catch @panic("Failed to read file");
         } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name), "demo3.joy")) {
-            banks[0xF] = entry_reader.readAllAlloc(gpa.allocator(), 246 * 1024) catch @panic("Failed to read file");
+            banks[0xF] = entry_reader.readAllAlloc(allocator, 246 * 1024) catch @panic("Failed to read file");
         }
     }
     return banks;
 }
 
-fn readBanksFromDirectory(path: []const u8) Banks {
+fn readBanksFromDirectory(path: []const u8, allocator: Allocator) Banks {
     var dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch @panic("Failed to open dir");
     defer dir.close();
-
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
 
     var banks: Banks = [1]?[]const u8{null} ** 16;
     if (!builtin.target.isWasm()) {
@@ -121,11 +116,11 @@ fn readBanksFromDirectory(path: []const u8) Banks {
             var out_str: [256]u8 = undefined;
             if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name[0..4]), "bank")) {
                 const index = std.fmt.parseInt(u8, entry.name[4..], 16) catch continue;
-                banks[index] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
+                banks[index] = dir.readFileAlloc(allocator, entry.name, 246 * 1024) catch @panic("Failed to read file");
             } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name), "memlist.bin")) {
-                banks[0xE] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
+                banks[0xE] = dir.readFileAlloc(allocator, entry.name, 246 * 1024) catch @panic("Failed to read file");
             } else if (std.mem.eql(u8, std.ascii.lowerString(&out_str, entry.name), "demo3.joy")) {
-                banks[0xF] = dir.readFileAlloc(gpa.allocator(), entry.name, 246 * 1024) catch @panic("Failed to read file");
+                banks[0xF] = dir.readFileAlloc(allocator, entry.name, 246 * 1024) catch @panic("Failed to read file");
             }
         }
     }

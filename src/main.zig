@@ -1,17 +1,18 @@
 const std = @import("std");
 const clap = @import("clap");
 const sokol = @import("sokol");
-const time = @import("common/time.zig");
-const gfx = @import("common/gfx.zig");
-const prof = @import("common/prof.zig");
-const audio = @import("common/audio.zig");
-const raw = @import("raw/raw.zig");
+const slog = sokol.log;
+const sapp = sokol.app;
+const common = @import("common");
+const time = common.time;
+const gfx = common.gfx;
+const prof = common.prof;
+const audio = common.audio;
+const raw = @import("raw");
 const Game = raw.Game;
 const GameLang = Game.GameLang;
 const GameInput = Game.GameInput;
 const ui = @import("ui/ui.zig");
-const slog = sokol.log;
-const sapp = sokol.app;
 
 pub const std_options = .{
     // Set the log level to info
@@ -176,6 +177,9 @@ pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+
     var diag = clap.Diagnostic{};
     var res = clap.parse(clap.Help, &params, parsers, .{
         .allocator = gpa.allocator(),
@@ -198,7 +202,7 @@ pub fn main() void {
 
     if (res.positionals.len > 0) {
         const path = res.positionals[0];
-        state.options.data = raw.GameData.readData(path);
+        state.options.data = raw.GameData.readData(path, arena.allocator());
     }
 
     sapp.run(.{

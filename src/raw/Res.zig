@@ -87,17 +87,17 @@ has_password_screen: bool = true,
 data_type: GameDataType = undefined,
 data: GameData,
 user_data: ?*anyopaque,
-copy_bitmap: *const fn (user_data: ?*anyopaque, src: []const u8) void,
-set_palette: *const fn (user_data: ?*anyopaque, pal: u8) void,
+copy_bitmap: ?*const fn (user_data: ?*anyopaque, src: []const u8) void,
+set_palette: ?*const fn (user_data: ?*anyopaque, pal: u8) void,
 lang: GameLang,
 const Self = @This();
 
 const Context = struct {
     lang: GameLang,
     data: GameData,
-    user_data: ?*anyopaque,
-    copy_bitmap: *const fn (user_data: ?*anyopaque, src: []const u8) void,
-    set_palette: *const fn (user_data: ?*anyopaque, pal: u8) void,
+    user_data: ?*anyopaque = null,
+    copy_bitmap: ?*const fn (user_data: ?*anyopaque, src: []const u8) void = null,
+    set_palette: ?*const fn (user_data: ?*anyopaque, pal: u8) void = null,
 };
 
 pub fn init(context: Context) !Self {
@@ -168,7 +168,7 @@ pub fn load(self: *Self) void {
                 bank_log.debug("Resource::load() bufPos=0x{X} size={} type={} pos=0x{X} bankNum={}", .{ self.mem.len - mem_ptr.len, me.packed_size, me.type, me.bank_pos, me.bank_num });
                 if (self.readBank(me, mem_ptr)) {
                     if (me.type == .bitmap) {
-                        self.copy_bitmap(self.user_data, self.mem[self.vid_cur..]);
+                        self.copy_bitmap.?(self.user_data, self.mem[self.vid_cur..]);
                         me.status = .null;
                     } else {
                         me.buf_ptr = mem_ptr;
@@ -229,7 +229,7 @@ pub fn invalidate(self: *Self) void {
         }
     }
     self.script_cur = self.script_bak;
-    self.set_palette(self.user_data, 0xFF);
+    self.set_palette.?(self.user_data, 0xFF);
 }
 
 pub fn invalidateAll(self: *Self) void {
@@ -237,7 +237,7 @@ pub fn invalidateAll(self: *Self) void {
         self.mem_list[i].status = .null;
     }
     self.script_cur = 0;
-    self.set_palette(self.user_data, 0xFF);
+    self.set_palette.?(self.user_data, 0xFF);
 }
 
 pub fn setupPart(self: *Self, id: usize) void {

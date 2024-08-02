@@ -1,9 +1,11 @@
 const std = @import("std");
+const sokol = @import("sokol");
+const tools = @import("tools/build.zig");
 const Build = std.Build;
 const OptimizeMode = std.builtin.OptimizeMode;
 const ResolvedTarget = Build.ResolvedTarget;
 const Dependency = Build.Dependency;
-const sokol = @import("sokol");
+const Module = Build.Module;
 
 pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -19,6 +21,23 @@ pub fn build(b: *Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    const mod_common = b.addModule("common", .{
+        .root_source_file = b.path("src/common/common.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+        },
+    });
+    const mod_raw = b.addModule("rawz", .{
+        .root_source_file = b.path("src/raw/raw.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "common", .module = mod_common },
+            .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+        },
+    });
 
     // inject the cimgui header search path into the sokol C library compile step
     const cimgui_root = dep_cimgui.namedWriteFiles("cimgui").getDirectory();
@@ -26,13 +45,19 @@ pub fn build(b: *Build) !void {
 
     // from here on different handling for native vs wasm builds
     if (target.result.isWasm()) {
-        try buildWasm(b, target, optimize, dep_sokol, dep_cimgui);
+        try buildWasm(b, target, optimize, dep_sokol, dep_cimgui, mod_common, mod_raw);
     } else {
-        try buildNative(b, target, optimize, dep_sokol, dep_cimgui);
+        try buildNative(b, target, optimize, dep_sokol, dep_cimgui, mod_common, mod_raw);
     }
+    tools.build(b, .{
+        .src_dir = "tools",
+        .target = target,
+        .optimize = optimize,
+        .mod_raw = mod_raw,
+    });
 }
 
-fn buildNative(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Dependency, dep_cimgui: *Dependency) !void {
+fn buildNative(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Dependency, dep_cimgui: *Dependency, mod_common: *Module, mod_raw: *Module) !void {
     const exe = b.addExecutable(.{
         .name = "rawz",
         .root_source_file = b.path("src/main.zig"),
@@ -40,9 +65,11 @@ fn buildNative(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_so
         .optimize = optimize,
     });
     const clap = b.dependency("clap", .{});
+    exe.root_module.addImport("common", mod_common);
     exe.root_module.addImport("clap", clap.module("clap"));
     exe.root_module.addImport("sokol", dep_sokol.module("sokol"));
     exe.root_module.addImport("cimgui", dep_cimgui.module("cimgui"));
+    exe.root_module.addImport("raw", mod_raw);
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -54,7 +81,7 @@ fn buildNative(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_so
     b.step("run", "Run exe").dependOn(&run_cmd.step);
 }
 
-fn buildWasm(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Dependency, dep_cimgui: *Dependency) !void {
+fn buildWasm(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Dependency, dep_cimgui: *Dependency, mod_common: *Module, mod_raw: *Module) !void {
     // build the main file into a library, this is because the WASM 'exe'
     // needs to be linked in a separate build step with the Emscripten linker
     const exe = b.addStaticLibrary(.{
@@ -65,8 +92,10 @@ fn buildWasm(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_soko
     });
     const clap = b.dependency("clap", .{});
     exe.root_module.addImport("clap", clap.module("clap"));
+    exe.root_module.addImport("common", mod_common);
     exe.root_module.addImport("sokol", dep_sokol.module("sokol"));
     exe.root_module.addImport("cimgui", dep_cimgui.module("cimgui"));
+    exe.root_module.addImport("raw", mod_raw);
 
     // get the Emscripten SDK dependency from the sokol dependency
     const dep_emsdk = dep_sokol.builder.dependency("emsdk", .{});

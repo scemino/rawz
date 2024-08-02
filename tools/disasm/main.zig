@@ -1,74 +1,78 @@
 const std = @import("std");
-const Disasm = @import("Disasm.zig");
+const Reader = std.io.Reader;
+const Writer = std.io.Writer;
+const raw = @import("raw");
+const GameData = raw.GameData;
 
-// the get string callback type
-const raw_getstrt_t = *const fn (id: u16, user_data: ?*anyopaque) []const u8;
+pub fn Context(comptime ReaderType: type, comptime WriterType: type) type {
+    return struct {
+        pc: u16,
+        reader: ReaderType,
+        writer: WriterType,
+        const Self = @This();
 
-const Context = struct {
-    pc: u16,
-    in_cb: Disasm.ui_dasm_input_t,
-    out_cb: ?Disasm.ui_dasm_output_t,
-    user_data: ?*anyopaque,
+        const digits = "0123456789";
 
-    const digits = "0123456789";
+        pub fn init(pc: u16, reader: ReaderType, writer: WriterType) Self {
+            return .{
+                .pc = pc,
+                .reader = reader,
+                .writer = writer,
+            };
+        }
 
-    pub fn fetch_u8(self: *Context) u8 {
-        const v = self.in_cb(self.user_data);
-        self.pc += 1;
-        return v;
-    }
+        pub fn fetch_u8(self: *Self) u8 {
+            const v = self.reader.readByte() catch @panic("failed to read");
+            self.pc += 1;
+            return v;
+        }
 
-    pub fn fetch_u16(self: *Context) u16 {
-        const v1: u16 = self.in_cb(self.user_data);
-        const v2: u16 = self.in_cb(self.user_data);
-        self.pc += 2;
-        return (v1 << 8) | v2;
-    }
+        pub fn fetch_u16(self: *Self) u16 {
+            const v1: u16 = self.reader.readByte() catch @panic("failed to read");
+            const v2: u16 = self.reader.readByte() catch @panic("failed to read");
+            self.pc += 2;
+            return (v1 << 8) | v2;
+        }
 
-    // function to output string
-    pub fn write(self: *Context, str: []const u8) void {
-        if (self.out_cb) |out_cb| {
+        // function to output string
+        pub fn write(self: *Self, str: []const u8) void {
             for (str) |c| {
-                out_cb(c, self.user_data);
+                self.writer.writeByte(c) catch @panic("failed to write");
             }
         }
-    }
 
-    fn writeHex(self: *Context, val: u16) void {
-        var buf: [5]u8 = undefined;
-        const buf2 = std.fmt.bufPrint(&buf, "${X:0>4}", .{val}) catch @panic("format error");
-        self.write(buf2);
-    }
+        fn writeHex(self: *Self, val: u16) void {
+            var buf: [5]u8 = undefined;
+            const buf2 = std.fmt.bufPrint(&buf, "${X:0>4}", .{val}) catch @panic("format error");
+            self.write(buf2);
+        }
 
-    // function to output an unsigned 8-bit value as decimal string
-    pub fn writeDec(self: *Context, val: u8) void {
-        if (self.out_cb) |out_cb| {
+        // function to output an unsigned 8-bit value as decimal string
+        pub fn writeDec(self: *Self, val: u8) void {
             if (val == 0) {
-                out_cb(digits[0], self.user_data);
-            } else {
-                var div: u8 = 100;
-                var b: bool = false;
-                inline for (0..3) |_| {
-                    const v: u8 = (val / div) % 10;
-                    if (b or (v > 0)) {
-                        b = true;
-                        out_cb(digits[v & 0xF], self.user_data);
-                    }
-                    div /= 10;
+                self.writer.writeByte(digits[0]) catch @panic("failed to write");
+                return;
+            }
+            var div: u8 = 100;
+            var b: bool = false;
+            inline for (0..3) |_| {
+                const v: u8 = (val / div) % 10;
+                if (b or (v > 0)) {
+                    b = true;
+                    self.writer.writeByte(digits[v & 0xF]) catch @panic("failed to write");
                 }
+                div /= 10;
             }
         }
-    }
 
-    pub fn writeByte(self: *Context, val: u8) void {
-        if (self.out_cb) |out_cb| {
-            out_cb(val, self.user_data);
+        pub fn writeByte(self: *Self, val: u8) void {
+            self.writer.writeByte(val) catch @panic("failed to write");
         }
-    }
-};
+    };
+}
 
-pub fn disasmOp(pc: u16, in_cb: Disasm.ui_dasm_input_t, out_cb: Disasm.ui_dasm_output_t, get_str_cb: raw_getstrt_t, user_data: ?*anyopaque) u16 {
-    var ctx = Context{ .pc = pc, .in_cb = in_cb, .out_cb = out_cb, .user_data = user_data };
+pub fn disasmOp(pc: u16, reader: anytype, writer: anytype) u16 {
+    var ctx = Context(@TypeOf(reader), @TypeOf(writer)){ .pc = pc, .reader = reader, .writer = writer };
     const op: u8 = ctx.fetch_u8();
 
     // opcode name
@@ -181,9 +185,9 @@ pub fn disasmOp(pc: u16, in_cb: Disasm.ui_dasm_input_t, out_cb: Disasm.ui_dasm_o
         0x12 => {
             const text_num = ctx.fetch_u16();
             ctx.write("text ");
-            ctx.writeByte('\"');
-            ctx.write(get_str_cb(text_num, user_data)); // text
-            ctx.write("\" ");
+            //ctx.writeByte('\"');
+            //ctx.write(get_str_cb(text_num, user_data)); // text
+            //ctx.write("\" ");
             ctx.writeHex(text_num); // text number
             ctx.write(", ");
             ctx.writeDec(ctx.fetch_u8()); // x
@@ -274,17 +278,16 @@ pub fn disasmOp(pc: u16, in_cb: Disasm.ui_dasm_input_t, out_cb: Disasm.ui_dasm_o
                     ctx.writeHex(@bitCast(x));
                 }
                 ctx.write(" ");
-                var y: i16 = ctx.fetch_u8();
                 if ((op & 8) == 0) {
                     if ((op & 4) == 0) {
-                        y = (y << 8) | ctx.fetch_u8();
+                        const y: u16 = (@as(u16, @intCast(ctx.fetch_u8())) << 8) | ctx.fetch_u8();
                         ctx.writeHex(@bitCast(y));
                     } else {
                         ctx.write("v");
-                        ctx.writeHex(@bitCast(y));
+                        ctx.writeDec(ctx.fetch_u8());
                     }
                 } else {
-                    ctx.writeHex(@bitCast(y));
+                    ctx.writeDec(ctx.fetch_u8());
                 }
                 ctx.write(" ");
                 if ((op & 2) == 0) {
@@ -307,4 +310,65 @@ pub fn disasmOp(pc: u16, in_cb: Disasm.ui_dasm_input_t, out_cb: Disasm.ui_dasm_o
         },
     }
     return ctx.pc;
+}
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var args_arr = std.ArrayList([]const u8).init(gpa.allocator());
+    defer args_arr.deinit();
+
+    var args = std.process.args();
+    while (args.next()) |arg| {
+        try args_arr.append(arg);
+    }
+
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+
+    // read game data
+    const data_option = GameData.readData(args_arr.items[1], arena.allocator());
+    if (data_option) |data| {
+        var res = try raw.Res.init(.{
+            .lang = .fr,
+            .data = data,
+        });
+        // for all resources
+        for (0..res.num_mem_list) |i| {
+            const buf = try arena.allocator().alloc(u8, res.mem_list[i].unpacked_size);
+            defer arena.allocator().free(buf);
+
+            // read its data
+            if (res.readBank(&res.mem_list[i], buf)) {
+
+                // write into file
+                var name: [16]u8 = undefined;
+                _ = try std.fmt.bufPrint(&name, "data{X:0>2}_{X:0>2}", .{ @intFromEnum(res.mem_list[i].type), i });
+                const data_file = try std.fs.cwd().createFile(name[0..9], .{});
+                defer data_file.close();
+                try data_file.writeAll(buf);
+
+                // for all script data
+                if (res.mem_list[i].type == .bytecode) {
+
+                    // dump its disassembly into a file
+                    _ = try std.fmt.bufPrint(&name, "data{X:0>2}_{X:0>2}.disasm", .{ @intFromEnum(res.mem_list[i].type), i });
+                    const disasm_file = try std.fs.cwd().createFile(name[0..], .{});
+                    defer disasm_file.close();
+
+                    var fbs = std.io.fixedBufferStream(buf);
+                    var pc: u16 = 0;
+                    while (pc < res.mem_list[i].unpacked_size) {
+                        const pc_name = try std.fmt.bufPrint(&name, "{X:0>4}: ", .{pc});
+                        _ = try disasm_file.writer().write(pc_name);
+                        if (pc == 0x00AB) {
+                            _ = 42;
+                        }
+                        pc = disasmOp(pc, fbs.reader(), disasm_file.writer());
+                        try disasm_file.writer().writeByte('\n');
+                    }
+                }
+            }
+        }
+    }
 }
