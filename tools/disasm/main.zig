@@ -71,7 +71,9 @@ pub fn Context(comptime ReaderType: type, comptime WriterType: type) type {
     };
 }
 
-pub fn disasmOp(pc: u16, reader: anytype, writer: anytype) u16 {
+const getTextFunc = *const fn (id: u16) []const u8;
+
+pub fn disasmOp(pc: u16, reader: anytype, writer: anytype, context: anytype) u16 {
     var ctx = Context(@TypeOf(reader), @TypeOf(writer)){ .pc = pc, .reader = reader, .writer = writer };
     const op: u8 = ctx.fetch_u8();
 
@@ -185,9 +187,9 @@ pub fn disasmOp(pc: u16, reader: anytype, writer: anytype) u16 {
         0x12 => {
             const text_num = ctx.fetch_u16();
             ctx.write("text ");
-            //ctx.writeByte('\"');
-            //ctx.write(get_str_cb(text_num, user_data)); // text
-            //ctx.write("\" ");
+            ctx.writeByte('\"');
+            ctx.write(context.find(text_num)); // text
+            ctx.write("\" ");
             ctx.writeHex(text_num); // text number
             ctx.write(", ");
             ctx.writeDec(ctx.fetch_u8()); // x
@@ -326,6 +328,8 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
 
+    const strings_table = raw.Strings.init(.fr);
+
     // read game data
     const data_option = GameData.readData(args_arr.items[1], arena.allocator());
     if (data_option) |data| {
@@ -339,35 +343,31 @@ pub fn main() !void {
             defer arena.allocator().free(buf);
 
             // read its data
-            if (res.readBank(&res.mem_list[i], buf)) {
+            if (!res.readBank(&res.mem_list[i], buf)) continue;
 
-                // write into file
-                var name: [16]u8 = undefined;
-                _ = try std.fmt.bufPrint(&name, "data{X:0>2}_{X:0>2}", .{ @intFromEnum(res.mem_list[i].type), i });
-                const data_file = try std.fs.cwd().createFile(name[0..9], .{});
-                defer data_file.close();
-                try data_file.writeAll(buf);
+            // write into file
+            var name: [16]u8 = undefined;
+            _ = try std.fmt.bufPrint(&name, "data{X:0>2}_{X:0>2}", .{ @intFromEnum(res.mem_list[i].type), i });
+            const data_file = try std.fs.cwd().createFile(name[0..9], .{});
+            defer data_file.close();
+            try data_file.writeAll(buf);
 
-                // for all script data
-                if (res.mem_list[i].type == .bytecode) {
+            // for all script data
+            if (res.mem_list[i].type != .bytecode) continue;
 
-                    // dump its disassembly into a file
-                    _ = try std.fmt.bufPrint(&name, "data{X:0>2}_{X:0>2}.disasm", .{ @intFromEnum(res.mem_list[i].type), i });
-                    const disasm_file = try std.fs.cwd().createFile(name[0..], .{});
-                    defer disasm_file.close();
+            // creates a file
+            _ = try std.fmt.bufPrint(&name, "data{X:0>2}_{X:0>2}.disasm", .{ @intFromEnum(res.mem_list[i].type), i });
+            const disasm_file = try std.fs.cwd().createFile(name[0..], .{});
+            defer disasm_file.close();
 
-                    var fbs = std.io.fixedBufferStream(buf);
-                    var pc: u16 = 0;
-                    while (pc < res.mem_list[i].unpacked_size) {
-                        const pc_name = try std.fmt.bufPrint(&name, "{X:0>4}: ", .{pc});
-                        _ = try disasm_file.writer().write(pc_name);
-                        if (pc == 0x00AB) {
-                            _ = 42;
-                        }
-                        pc = disasmOp(pc, fbs.reader(), disasm_file.writer());
-                        try disasm_file.writer().writeByte('\n');
-                    }
-                }
+            // dump its disassembly into it
+            var fbs = std.io.fixedBufferStream(buf);
+            var pc: u16 = 0;
+            while (pc < res.mem_list[i].unpacked_size) {
+                const pc_name = try std.fmt.bufPrint(&name, "{X:0>4}: ", .{pc});
+                _ = try disasm_file.writer().write(pc_name);
+                pc = disasmOp(pc, fbs.reader(), disasm_file.writer(), strings_table);
+                try disasm_file.writer().writeByte('\n');
             }
         }
     }
